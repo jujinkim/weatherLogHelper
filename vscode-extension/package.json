@@ -1,0 +1,47 @@
+{
+  "name": "weather-log-helper",
+  "displayName": "Weather Log Helper",
+  "description": "Internal WLH client",
+  "version": "0.0.1",
+  "publisher": "internal",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onCommand:wlh.scanFastThenFull",
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "wlh.scanFastThenFull",
+        "title": "WLH: Scan (Fast then Full)"
+      }
+    ],
+    "configuration": {
+      "title": "Weather Log Helper",
+      "properties": {
+        "wlh.update.baseUrl": {
+          "type": "string",
+          "default": "__WLH_BASE_URL__",
+          "description": "Base URL for WLH engine updates"
+        },
+        "wlh.decrypt.jarPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to decrypt jar"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.4.5"
+  }
+}
