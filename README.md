@@ -1,6 +1,50 @@
 # Weather Log Helper (WLH)
 
-WLH is an internal Android log analysis tool that provides fast scanning and structured results for large log files. It ships as a local daemon plus thin clients (CLI bootstrap, VSCode extension, UltraEdit scripts). It is not intended for public distribution.
+WLH is an internal Android log analysis tool that provides fast scanning and structured results for large log files. It ships as a local daemon plus thin clients (CLI bootstrap, VSCode extension, UltraEdit scripts).
+
+## Repository Structure
+
+```
+/
+  engine/             Kotlin/JVM daemon (Gradle)
+  bootstrap/          wlh.sh + wlh.bat bootstrap scripts
+  vscode-extension/   VSCode extension (npm/TypeScript)
+  ue18-scripts/       UltraEdit 18 scripts (no build)
+  docs/               Usage and troubleshooting docs
+```
+
+## Build Responsibilities
+
+Component | Technology | Build Tool | Directory
+---|---|---|---
+Engine daemon | Kotlin/JVM | Gradle | `engine/`
+VSCode extension | TypeScript/Node.js | npm | `vscode-extension/`
+UltraEdit 18 scripts | JavaScript | none | `ue18-scripts/`
+
+Build commands must be run from the component’s own directory.
+
+## How to Build
+
+### Engine (wlh-engine)
+
+- Directory: `engine/`
+- Command:
+  - `./gradlew shadowJar`
+
+This produces the fat jar under `engine/build/libs/`.
+
+### VSCode Extension
+
+- Directory: `vscode-extension/`
+- Commands:
+  - `npm install`
+  - `npm run build`
+
+Optional internal packaging uses `vsce` from within `vscode-extension/` if needed.
+
+### UltraEdit 18 Scripts
+
+No build step. Use the scripts directly from `ue18-scripts/`.
 
 ## Install (internal)
 
@@ -29,6 +73,18 @@ WLH resolves the update base URL in this order:
 2. `WLH_BASE_URL` environment variable
 3. `WLH_HOME/config/wlh.json` with `updateBaseUrl`
 4. Default placeholder `__WLH_BASE_URL__`
+
+## Common Mistakes
+
+- Running `npm` at the repository root (npm is only for `vscode-extension/`).
+- Expecting Gradle to build editor plugins (Gradle is only for `engine/`).
+- Mixing build systems across components.
+
+## Developer Workflow Summary
+
+- Build the engine in `engine/` with Gradle.
+- Build the VSCode extension in `vscode-extension/` with npm.
+- Use `bootstrap/wlh.sh` or `bootstrap/wlh.bat` to run `wlh`.
 
 ## Troubleshooting
 
