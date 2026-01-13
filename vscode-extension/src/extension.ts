@@ -36,14 +36,35 @@ async function scanFastThenFull(filePath: string) {
   }
 }
 
+function resolveActiveFilePath(): string | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (editor) {
+    return editor.document.fileName;
+  }
+
+  const tab = vscode.window.tabGroups.activeTabGroup?.activeTab;
+  if (!tab) {
+    return undefined;
+  }
+
+  const input = tab.input;
+  if (input instanceof vscode.TabInputText) {
+    return input.uri.fsPath;
+  }
+  if (input instanceof vscode.TabInputTextDiff) {
+    return input.modified.fsPath;
+  }
+  return undefined;
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const scanCommand = vscode.commands.registerCommand('wlh.scanFastThenFull', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
+    const filePath = resolveActiveFilePath();
+    if (!filePath) {
       vscode.window.showInformationMessage('WLH: No active file');
       return;
     }
-    await scanFastThenFull(editor.document.fileName);
+    await scanFastThenFull(filePath);
   });
 
   const openListener = vscode.workspace.onDidOpenTextDocument(async (doc) => {
