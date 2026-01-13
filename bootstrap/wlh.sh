@@ -141,6 +141,17 @@ ensure_dirs() {
   mkdir -p "$WLH_HOME/engine" "$WLH_HOME/daemon" "$WLH_HOME/cache" "$WLH_HOME/config" "$WLH_HOME/logs"
 }
 
+write_starting_file() {
+  local path="$WLH_HOME/daemon/daemon.starting.json"
+  cat <<JSON > "$path"
+{"pid": $$, "startedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+JSON
+}
+
+remove_starting_file() {
+  rm -f "$WLH_HOME/daemon/daemon.starting.json"
+}
+
 ensure_engine() {
   if [ "$NO_UPDATE" -eq 1 ] && [ -f "$WLH_HOME/engine/wlh-engine.jar" ]; then
     return 0
@@ -261,13 +272,18 @@ start_daemon() {
 
   local lock_dir="$WLH_HOME/daemon/daemon.lock"
   if ! acquire_lock "$lock_dir"; then
+    if wait_for_daemon "$WLH_HOME/daemon/daemon.json" >/dev/null; then
+      json_ok ',"started":false'
+      return 0
+    fi
     json_error "daemon_lock_busy"
     exit 1
   fi
-  trap 'release_lock "$lock_dir"' EXIT
+  trap 'remove_starting_file; release_lock "$lock_dir"' EXIT
 
   if is_daemon_alive; then
     release_lock "$lock_dir"
+    remove_starting_file
     trap - EXIT
     json_ok ',"started":false'
     return 0
@@ -276,24 +292,28 @@ start_daemon() {
   local java_cmd
   if ! java_cmd=$(resolve_java); then
     release_lock "$lock_dir"
+    remove_starting_file
     trap - EXIT
     json_error "java_not_found"
     exit 1
   fi
 
   ensure_engine
+  write_starting_file
 
   nohup "$java_cmd" -jar "$WLH_HOME/engine/wlh-engine.jar" --home "$WLH_HOME" --port 0 \
     >> "$WLH_HOME/logs/daemon.log" 2>> "$WLH_HOME/logs/daemon.log" &
 
   if ! wait_for_daemon "$WLH_HOME/daemon/daemon.json" >/dev/null; then
     release_lock "$lock_dir"
+    remove_starting_file
     trap - EXIT
     json_error "daemon_start_failed"
     exit 1
   fi
 
   release_lock "$lock_dir"
+  remove_starting_file
   trap - EXIT
   json_ok ',"started":true'
 }

@@ -48,6 +48,17 @@ function Ensure-Dirs($home) {
   New-Item -ItemType Directory -Force -Path "$home\logs" | Out-Null
 }
 
+function Write-StartingFile($home) {
+  $path = "$home\daemon\daemon.starting.json"
+  $obj = @{ pid = $PID; startedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") }
+  $obj | ConvertTo-Json -Compress | Set-Content $path
+}
+
+function Remove-StartingFile($home) {
+  $path = "$home\daemon\daemon.starting.json"
+  if (Test-Path $path) { Remove-Item -Force $path }
+}
+
 function Read-ConfigBaseUrl($home) {
   $configPath = "$home\config\wlh.json"
   if (-not (Test-Path $configPath)) { return "" }
@@ -133,6 +144,15 @@ function Start-Daemon($home, $baseUrl, $noUpdate) {
   }
   $lockDir = "$home\daemon\daemon.lock"
   if (-not (Acquire-Lock $lockDir)) {
+    $attempts = 0
+    while ($attempts -lt 50) {
+      if (Is-DaemonAlive $home) {
+        Write-Json @{ status = "ok"; started = $false }
+        return
+      }
+      Start-Sleep -Milliseconds 200
+      $attempts++
+    }
     Write-ErrorJson "daemon_lock_busy"
     exit 1
   }
@@ -141,6 +161,7 @@ function Start-Daemon($home, $baseUrl, $noUpdate) {
       Write-Json @{ status = "ok"; started = $false }
       return
     }
+    Write-StartingFile $home
     Ensure-Engine $home $baseUrl $noUpdate
     $java = Resolve-Java
     $logFile = "$home\logs\daemon.log"
@@ -157,6 +178,7 @@ function Start-Daemon($home, $baseUrl, $noUpdate) {
     Write-ErrorJson "daemon_start_failed"
     exit 1
   } finally {
+    Remove-StartingFile $home
     Release-Lock $lockDir
   }
 }
