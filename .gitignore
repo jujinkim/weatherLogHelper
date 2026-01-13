@@ -1,0 +1,10 @@
+# Gradle
+engine/.gradle/
+engine/build/
+
+# Node
+vscode-extension/node_modules/
+vscode-extension/out/
+
+# OS
+.DS_Store
