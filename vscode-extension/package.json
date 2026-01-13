@@ -32,6 +32,11 @@
           "type": "string",
           "default": "",
           "description": "Path to decrypt jar"
+        },
+        "wlh.commandPath": {
+          "type": "string",
+          "default": "wlh",
+          "description": "Path to the wlh executable"
         }
       }
     }

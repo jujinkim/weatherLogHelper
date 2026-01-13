@@ -6,6 +6,7 @@ const output = vscode.window.createOutputChannel('WLH');
 function runWlh(args: string[]): Promise<string> {
   const config = vscode.workspace.getConfiguration('wlh');
   const baseUrl = config.get<string>('update.baseUrl');
+  const commandPath = config.get<string>('commandPath') || 'wlh';
   const finalArgs = [...args];
   if (baseUrl && baseUrl.length > 0) {
     finalArgs.unshift(baseUrl);
@@ -13,7 +14,7 @@ function runWlh(args: string[]): Promise<string> {
   }
 
   return new Promise((resolve, reject) => {
-    execFile('wlh', finalArgs, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(commandPath, finalArgs, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (stderr) {
         output.appendLine(stderr.trim());
       }
