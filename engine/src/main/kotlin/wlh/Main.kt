@@ -620,7 +620,12 @@ private class EngineHome(private val home: Path) {
 
     fun writeDaemonJson(port: Int, startedAt: String) {
         val json = """
-            {\n  \"port\": $port,\n  \"pid\": ${ProcessHandle.current().pid()},\n  \"startedAt\": \"$startedAt\",\n  \"apiVersion\": 1\n}
+            {
+              "port": $port,
+              "pid": ${ProcessHandle.current().pid()},
+              "startedAt": "$startedAt",
+              "apiVersion": 1
+            }
         """.trimIndent()
         val target = daemonDir.resolve("daemon.json")
         val temp = daemonDir.resolve("daemon.json.tmp")
