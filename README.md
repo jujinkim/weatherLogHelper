@@ -30,6 +30,8 @@ Build commands must be run from the component’s own directory.
 - Directory: `engine/`
 - Command:
   - `./gradlew shadowJar`
+- From repo root (equivalent):
+  - `./gradlew -p engine shadowJar`
 
 This produces the fat jar under `engine/build/libs/`.
 
@@ -40,7 +42,9 @@ This produces the fat jar under `engine/build/libs/`.
   - `npm install`
   - `npm run build`
 
-Optional internal packaging uses `vsce` from within `vscode-extension/` if needed.
+Optional internal packaging uses `vsce` from within `vscode-extension/`:
+- `npm install -g @vscode/vsce`
+- `vsce package`
 
 ### UltraEdit 18 Scripts
 
