@@ -204,7 +204,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             const entry = v as VersionEntry;
             const label = entry.label ?? '';
             return entry.line > 0
-              ? `<li><button class="jump" data-line="${entry.line}">L${entry.line}</button> ${escape(label)}</li>`
+              ? `<li><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(label)}</li>`
               : `<li>${escape(label)}</li>`;
           })
           .join('')
@@ -223,7 +223,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       entries.length
         ? entries
             .map((entry) => {
-              return `<li><button class="jump" data-line="${entry.line}">L${entry.line}</button> ${escape(
+              return `<li><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(
                 entry.preview
               )}</li>`;
             })
@@ -340,6 +340,16 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               margin-right: 6px;
               font-size: 11px;
             }
+            .copy {
+              background: transparent;
+              border: 1px solid var(--vscode-panel-border);
+              color: var(--vscode-descriptionForeground);
+              padding: 0 4px;
+              border-radius: 6px;
+              margin-right: 6px;
+              font-size: 11px;
+              line-height: 1.4;
+            }
             .message {
               font-size: 12px;
               color: var(--vscode-descriptionForeground);
@@ -439,6 +449,27 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             document.querySelectorAll('button[data-line]').forEach((button) => {
               button.addEventListener('click', () => {
                 vscode.postMessage({ type: 'jump', line: button.dataset.line });
+              });
+            });
+            document.querySelectorAll('button[data-copy]').forEach((button) => {
+              button.addEventListener('click', async () => {
+                const value = button.dataset.copy || '';
+                if (!value) {
+                  return;
+                }
+                const original = button.textContent || '📋';
+                try {
+                  await navigator.clipboard.writeText(value);
+                  button.textContent = '✅';
+                  setTimeout(() => {
+                    button.textContent = original;
+                  }, 1000);
+                } catch (err) {
+                  button.textContent = '⚠️';
+                  setTimeout(() => {
+                    button.textContent = original;
+                  }, 1000);
+                }
               });
             });
           </script>
