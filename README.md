@@ -74,6 +74,29 @@ Common commands:
 - `wlh adb devices`
 - `wlh adb run --serial SERIAL -- shell getprop`
 
+## Scan Result File (.wlhresult)
+
+When a scan completes, the engine writes a result file alongside the log:
+- Path: `<log file>.wlhresult`
+- Format: JSON serialized `ScanResult`
+
+Schema (high level):
+```json
+{
+  "file": "/abs/path/to/log.txt",
+  "mode": "full",
+  "versions": ["1.0.0"],
+  "crashes": [{ "line": 123, "preview": "..." }],
+  "tags": [{ "tag": "MyTag", "count": 42, "examples": ["..."] }],
+  "jsonBlocks": [{ "id": 1, "startLine": 200, "endLine": 230, "preview": "{...}", "content": "{...}" }],
+  "generatedAt": "2024-01-01T00:00:00Z"
+}
+```
+
+Notes:
+- The `.wlhresult` file is overwritten on each completed scan.
+- Clients can read `.wlhresult` instead of calling result endpoints.
+
 ## Base URL configuration
 
 WLH resolves the update base URL in this order:
