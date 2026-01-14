@@ -91,7 +91,7 @@
         },
         "wlh.decrypt.timeoutSeconds": {
           "type": "number",
-          "default": 600,
+          "default": 10,
           "description": "Decrypt timeout in seconds"
         },
         "wlh.commandPath": {
