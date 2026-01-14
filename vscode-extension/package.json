@@ -31,7 +31,7 @@
       "properties": {
         "wlh.update.baseUrl": {
           "type": "string",
-          "default": "__WLH_BASE_URL__",
+          "default": "",
           "description": "Base URL for WLH engine updates"
         },
         "wlh.decrypt.jarPath": {
@@ -41,7 +41,7 @@
         },
         "wlh.commandPath": {
           "type": "string",
-          "default": "wlh",
+          "default": "",
           "description": "Path to the wlh executable"
         }
       }

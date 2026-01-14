@@ -7,6 +7,10 @@ function runWlh(args: string[]): Promise<string> {
   const config = vscode.workspace.getConfiguration('wlh');
   const baseUrl = config.get<string>('update.baseUrl');
   const commandPath = config.get<string>('commandPath') || 'wlh';
+  if (!commandPath || commandPath.trim().length === 0) {
+    vscode.window.showErrorMessage('WLH: Configure wlh.commandPath to the bootstrap script.');
+    return Promise.reject(new Error('wlh_command_missing'));
+  }
   const finalArgs = [...args];
   if (baseUrl && baseUrl.length > 0) {
     finalArgs.unshift(baseUrl);
@@ -59,6 +63,15 @@ function resolveActiveFilePath(): string | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext) {
+  const config = vscode.workspace.getConfiguration('wlh');
+  const commandPath = config.get<string>('commandPath') || '';
+  const decryptJarPath = config.get<string>('decrypt.jarPath') || '';
+  if (!commandPath.trim()) {
+    vscode.window.showErrorMessage('WLH: Set wlh.commandPath (bootstrap path) before use.');
+  }
+  if (!decryptJarPath.trim()) {
+    vscode.window.showErrorMessage('WLH: Set wlh.decrypt.jarPath before use.');
+  }
   const scanCommand = vscode.commands.registerCommand('wlh.scanFastThenFull', async () => {
     const filePath = resolveActiveFilePath();
     if (!filePath) {

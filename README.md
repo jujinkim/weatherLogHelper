@@ -41,6 +41,9 @@ This produces the fat jar under `engine/build/libs/`.
 - Commands:
   - `npm install`
   - `npm run build`
+- Required settings (VSCode Settings):
+  - `wlh.commandPath` (path to `wlh` bootstrap)
+  - `wlh.decrypt.jarPath` (path to decrypt jar)
 
 Optional internal packaging uses `vsce` from within `vscode-extension/`:
 - `npm install -g @vscode/vsce`
@@ -49,6 +52,7 @@ Optional internal packaging uses `vsce` from within `vscode-extension/`:
 ### UltraEdit 18 Scripts
 
 No build step. Use the scripts directly from `ue18-scripts/`.
+Set `wlhPath` and `decryptJar` in `wlh.config.json` (see `ue18-scripts/config.template.json`).
 
 ## Install (internal)
 
@@ -74,15 +78,16 @@ Common commands:
 
 WLH resolves the update base URL in this order:
 1. CLI `--base-url`
-2. `WLH_BASE_URL` environment variable
-3. `WLH_HOME/config/wlh.json` with `updateBaseUrl`
-4. Default placeholder `__WLH_BASE_URL__`
+2. `WLH_HOME/config/wlh.json` with `updateBaseUrl`
+
+Environment variables are not used for base URL resolution.
 
 ## Common Mistakes
 
 - Running `npm` at the repository root (npm is only for `vscode-extension/`).
 - Expecting Gradle to build editor plugins (Gradle is only for `engine/`).
 - Mixing build systems across components.
+- Relying on environment variables for `WLH_HOME` or base URL (use CLI flags or config).
 
 ## Developer Workflow Summary
 

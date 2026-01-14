@@ -8,9 +8,16 @@ if (!fso.FileExists(configPath)) {
   var file = fso.OpenTextFile(configPath, 1).ReadAll();
   var config = eval('(' + file + ')');
   var jarPath = config.decryptJar;
-  var filePath = UltraEdit.activeDocument.path + UltraEdit.activeDocument.name;
-  var cmd = "wlh decrypt \"" + filePath + "\" --jar \"" + jarPath + "\"";
-  var exec = shell.Exec(cmd);
-  var output = exec.StdOut.ReadAll();
-  UltraEdit.outputWindow.write(output);
+  var wlhPath = config.wlhPath;
+  if (!wlhPath) {
+    UltraEdit.outputWindow.write("Missing wlhPath in wlh.config.json\n");
+  } else if (!jarPath) {
+    UltraEdit.outputWindow.write("Missing decryptJar in wlh.config.json\n");
+  } else {
+    var filePath = UltraEdit.activeDocument.path + UltraEdit.activeDocument.name;
+    var cmd = "\"" + wlhPath + "\" decrypt \"" + filePath + "\" --jar \"" + jarPath + "\"";
+    var exec = shell.Exec(cmd);
+    var output = exec.StdOut.ReadAll();
+    UltraEdit.outputWindow.write(output);
+  }
 }

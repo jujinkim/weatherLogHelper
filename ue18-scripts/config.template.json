@@ -1,4 +1,5 @@
 {
   "baseUrl": "__WLH_BASE_URL__",
+  "wlhPath": "C:/path/to/wlh.bat",
   "decryptJar": "C:/path/to/dec.jar"
 }

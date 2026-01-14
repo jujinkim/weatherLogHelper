@@ -73,6 +73,13 @@ function Read-ConfigBaseUrl($home) {
 function Ensure-Engine($home, $baseUrl, $noUpdate) {
   $engineJar = "$home\engine\wlh-engine.jar"
   if ($noUpdate -and (Test-Path $engineJar)) { return }
+  if (-not $baseUrl) {
+    if (Test-Path $engineJar) {
+      return
+    }
+    Write-ErrorJson "base_url_missing"
+    exit 1
+  }
 
   $lockDir = "$home\engine\download.lock"
   if (-not (Acquire-Lock $lockDir)) {
@@ -274,14 +281,9 @@ while ($ArgsList.Count -gt 0) {
   }
 }
 
-if (-not $Home) {
-  if ($env:WLH_HOME) { $Home = $env:WLH_HOME } else { $Home = Resolve-DefaultHome }
-}
+if (-not $Home) { $Home = Resolve-DefaultHome }
 Ensure-Dirs $Home
-if (-not $BaseUrl) {
-  if ($env:WLH_BASE_URL) { $BaseUrl = $env:WLH_BASE_URL } else { $BaseUrl = Read-ConfigBaseUrl $Home }
-  if (-not $BaseUrl) { $BaseUrl = "__WLH_BASE_URL__" }
-}
+if (-not $BaseUrl) { $BaseUrl = Read-ConfigBaseUrl $Home }
 
 $Command = if ($ArgsList.Count -gt 0) { $ArgsList[0] } else { "" }
 $ArgsList = if ($ArgsList.Count -gt 1) { $ArgsList.GetRange(1, $ArgsList.Count - 1) } else { @() }

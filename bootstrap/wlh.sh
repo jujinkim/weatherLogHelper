@@ -156,6 +156,14 @@ ensure_engine() {
   if [ "$NO_UPDATE" -eq 1 ] && [ -f "$WLH_HOME/engine/wlh-engine.jar" ]; then
     return 0
   fi
+  if [ -z "$BASE_URL" ]; then
+    if [ -f "$WLH_HOME/engine/wlh-engine.jar" ]; then
+      log "base URL missing, skipping update"
+      return 0
+    fi
+    json_error "base_url_missing"
+    exit 1
+  fi
 
   local lock_dir="$WLH_HOME/engine/download.lock"
   if ! acquire_lock "$lock_dir"; then
@@ -452,7 +460,6 @@ PY
   http_post "http://127.0.0.1:${port}/api/v1/adb/run" "$payload" || json_error "adb_failed"
 }
 
-ENV_WLH_HOME="${WLH_HOME:-}"
 WLH_HOME=""
 BASE_URL=""
 NO_UPDATE=0
@@ -484,25 +491,15 @@ index=$((index + 1))
 REMAINING=("${ARGS[@]:$index}")
 
 if [ -z "$WLH_HOME" ]; then
-  if [ -n "$ENV_WLH_HOME" ]; then
-    WLH_HOME="$ENV_WLH_HOME"
-  else
-    WLH_HOME=$(resolve_default_home)
-  fi
+  WLH_HOME=$(resolve_default_home)
 fi
 
 ensure_dirs
 
 if [ -z "$BASE_URL" ]; then
-  if [ -n "${WLH_BASE_URL:-}" ]; then
-    BASE_URL="$WLH_BASE_URL"
-  else
-    config_url=$(read_config_base_url "$WLH_HOME/config/wlh.json" 2>/dev/null || true)
-    if [ -n "$config_url" ]; then
-      BASE_URL="$config_url"
-    else
-      BASE_URL="__WLH_BASE_URL__"
-    fi
+  config_url=$(read_config_base_url "$WLH_HOME/config/wlh.json" 2>/dev/null || true)
+  if [ -n "$config_url" ]; then
+    BASE_URL="$config_url"
   fi
 fi
 
