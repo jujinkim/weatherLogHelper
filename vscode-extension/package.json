@@ -72,7 +72,8 @@
       "explorer": [
         {
           "id": "wlh.sidebar",
-          "name": "WLH"
+          "name": "WLH",
+          "type": "webview"
         }
       ]
     },
