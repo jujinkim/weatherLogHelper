@@ -37,7 +37,8 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly onJump: (filePath: string, line: number) => void,
-    private readonly onDecrypt: (filePath: string) => void
+    private readonly onDecrypt: (filePath: string) => void,
+    private readonly onOpenSettings: () => void
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -59,6 +60,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
         } else {
           vscode.window.showErrorMessage('WLH: No active file to decrypt.');
         }
+      }
+      if (message?.type === 'openSettings') {
+        this.onOpenSettings();
       }
     });
     this.render();
@@ -132,6 +136,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
           <h3>WLH Results</h3>
           <p>${escape(results.filePath)}</p>
           <button id="decrypt">Run Decrypt</button>
+          <button id="openSettings">Open Settings</button>
           <h4>Versions</h4>
           <ul>${versions}</ul>
           <h4>Crashes</h4>
@@ -144,6 +149,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             const vscode = acquireVsCodeApi();
             document.getElementById('decrypt').addEventListener('click', () => {
               vscode.postMessage({ type: 'decrypt' });
+            });
+            document.getElementById('openSettings').addEventListener('click', () => {
+              vscode.postMessage({ type: 'openSettings' });
             });
             document.querySelectorAll('button[data-line]').forEach((button) => {
               button.addEventListener('click', () => {
@@ -306,6 +314,9 @@ export function activate(context: vscode.ExtensionContext) {
     },
     async (filePath) => {
       await decryptFile(filePath);
+    },
+    async () => {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'wlh');
     }
   );
   context.subscriptions.push(
