@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
+import * as fs from 'fs';
 
 const output = vscode.window.createOutputChannel('WLH');
 
@@ -41,6 +42,11 @@ type PackageGroup = {
 type TagGroup = {
   name: string;
   entries: TagEntry[];
+};
+
+type EngineConfig = {
+  scanPackages: string[];
+  scanTags: string[];
 };
 
 class WlhSidebarProvider implements vscode.WebviewViewProvider {
@@ -106,6 +112,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       }
       if (message?.type === 'openHome') {
         this.onOpenHome();
+      }
+      if (message?.type === 'openEngineConfig') {
+        openEngineConfig();
       }
       if (message?.type === 'scan') {
         const filePath = this.currentResults?.filePath || resolveActiveFilePath();
@@ -398,10 +407,15 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               <button id="runEngineDirect">Run Engine Direct</button>
               <button id="openHome">Open WLH Home</button>
               <button id="openSettings">Open Settings</button>
+              <button id="openEngineConfig">Open Engine Config</button>
             </div>
-            <div class="actions">
-              <button id="scan">Run Full Scan</button>
-              <button id="decrypt">Run Decrypt</button>
+            <div class="section">
+              <h4>Scan</h4>
+              <div class="path">${escape(results.filePath)}</div>
+              <div class="actions">
+                <button id="scan">Run Full Scan</button>
+                <button id="decrypt">Run Decrypt</button>
+              </div>
             </div>
             <div class="status">Status: ${escape(this.lastStatus)}</div>
             ${messageSection}
@@ -436,6 +450,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             });
             document.getElementById('openHome').addEventListener('click', () => {
               vscode.postMessage({ type: 'openHome' });
+            });
+            document.getElementById('openEngineConfig').addEventListener('click', () => {
+              vscode.postMessage({ type: 'openEngineConfig' });
             });
             document.getElementById('scan').addEventListener('click', () => {
               vscode.postMessage({ type: 'scan' });
@@ -523,6 +540,52 @@ function runWlh(args: string[]): Promise<string> {
 async function runWlhJson<T>(args: string[]): Promise<T> {
   const raw = await runWlh(args);
   return JSON.parse(raw) as T;
+}
+
+function resolveEngineConfigPath(): string {
+  return path.join(resolveDefaultHome(), 'config', 'wlh.json');
+}
+
+function ensureHomeDirectory() {
+  fs.mkdirSync(resolveDefaultHome(), { recursive: true });
+  fs.mkdirSync(path.join(resolveDefaultHome(), 'config'), { recursive: true });
+}
+
+function readEngineConfig(): EngineConfig {
+  try {
+    const configPath = resolveEngineConfigPath();
+    if (!fs.existsSync(configPath)) {
+      return { scanPackages: [], scanTags: [] };
+    }
+    const raw = fs.readFileSync(configPath, 'utf8');
+    const parsed = JSON.parse(raw) as Partial<EngineConfig>;
+    return {
+      scanPackages: Array.isArray(parsed.scanPackages) ? parsed.scanPackages : [],
+      scanTags: Array.isArray(parsed.scanTags) ? parsed.scanTags : []
+    };
+  } catch {
+    return { scanPackages: [], scanTags: [] };
+  }
+}
+
+function openEngineConfig() {
+  try {
+    ensureHomeDirectory();
+    const configPath = resolveEngineConfigPath();
+    if (!fs.existsSync(configPath)) {
+      const template = {
+        scanPackages: [],
+        scanTags: []
+      };
+      fs.writeFileSync(configPath, JSON.stringify(template, null, 2));
+    }
+    vscode.workspace.openTextDocument(configPath).then((doc) => {
+      vscode.window.showTextDocument(doc, { preview: false });
+    });
+  } catch (err) {
+    vscode.window.showErrorMessage('WLH: Failed to open engine config.');
+    output.appendLine(`Config open error: ${(err as Error).message}`);
+  }
 }
 
 function parsePackageList(value: string): string[] {
@@ -638,9 +701,9 @@ async function scanFastThenFull(filePath: string) {
       tags: tags.tags || [],
       jsonBlocks: jsonBlocks.jsonBlocks || []
     };
-    const config = vscode.workspace.getConfiguration('wlh');
-    const packageList = parsePackageList(config.get<string>('scan.packages') || '');
-    const tagList = parsePackageList(config.get<string>('scan.tags') || '');
+    const engineConfig = readEngineConfig();
+    const packageList = engineConfig.scanPackages;
+    const tagList = engineConfig.scanTags;
     const grouped = buildPackageGroups(results, packageList);
     const tagGroups = buildTagGroups(results, tagList);
     sidebarProvider?.updateResults(results, grouped.groups, grouped.unmatched, tagGroups);
@@ -720,6 +783,7 @@ function resolveEngineJarPath(): string {
 }
 
 async function runEngineDirect() {
+  ensureHomeDirectory();
   const jarPath = resolveEngineJarPath();
   const homePath = resolveDefaultHome();
   const extraArgs =
@@ -788,6 +852,7 @@ export function activate(context: vscode.ExtensionContext) {
       await runEngineDirect();
     },
     async () => {
+      ensureHomeDirectory();
       const homePath = resolveDefaultHome();
       await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(homePath));
     },
@@ -843,6 +908,7 @@ export function activate(context: vscode.ExtensionContext) {
     await runEngineDirect();
   });
   const openHomeCommand = vscode.commands.registerCommand('wlh.openHome', async () => {
+    ensureHomeDirectory();
     const homePath = resolveDefaultHome();
     await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(homePath));
   });

@@ -60,6 +60,11 @@ data class JobStatus(
     val message: String? = null
 )
 
+data class EngineConfig(
+    val scanPackages: List<String>,
+    val scanTags: List<String>
+)
+
 private data class Job(
     val id: String,
     val file: String,
@@ -332,7 +337,8 @@ private fun runScan(
     lastResult: AtomicReference<ScanResult?>
 ) {
     try {
-        val cacheKey = engineHome.cacheKeyFor(file)
+        val config = engineHome.readConfig(mapper)
+        val cacheKey = engineHome.cacheKeyFor(file, config)
         val cached = engineHome.loadCache(cacheKey, job.mode, mapper)
         if (cached != null) {
             job.status = "completed"
@@ -343,21 +349,21 @@ private fun runScan(
 
         when (job.mode) {
             ScanMode.FAST -> {
-                val result = scanFast(file, job)
+                val result = scanFast(file, job, config)
                 engineHome.saveCache(cacheKey, job.mode, result, mapper)
                 lastResult.set(result)
             }
             ScanMode.FULL -> {
-                val result = scanFull(file, job, null)
+                val result = scanFull(file, job, null, config)
                 engineHome.saveCache(cacheKey, job.mode, result, mapper)
                 lastResult.set(result)
             }
             ScanMode.FAST_THEN_FULL -> {
                 val fastCache = engineHome.loadCache(cacheKey, ScanMode.FAST, mapper)
-                val fastResult = fastCache ?: scanFast(file, job)
+                val fastResult = fastCache ?: scanFast(file, job, config)
                 job.progress = 50
                 val fullCache = engineHome.loadCache(cacheKey, ScanMode.FULL, mapper)
-                val finalResult = fullCache ?: scanFull(file, job, fastResult)
+                val finalResult = fullCache ?: scanFull(file, job, fastResult, config)
                 engineHome.saveCache(cacheKey, ScanMode.FULL, finalResult, mapper)
                 lastResult.set(finalResult)
             }
@@ -370,11 +376,12 @@ private fun runScan(
     }
 }
 
-private fun scanFast(file: File, job: Job): ScanResult {
+private fun scanFast(file: File, job: Job, config: EngineConfig): ScanResult {
     val versions = linkedSetOf<String>()
     val crashes = mutableListOf<CrashEntry>()
     val versionRegex = Regex("(?i)\\bversion[:=\\s]+([0-9][0-9A-Za-z._-]*)")
     val crashMarkers = listOf("fatal exception", "anr", "fatal signal", "sigsegv", "native crash", "crash")
+    val packageFilters = config.scanPackages.map { it.lowercase(Locale.ROOT) }
 
     val totalSize = file.length().coerceAtLeast(1L)
     var processedBytes = 0L
@@ -391,7 +398,9 @@ private fun scanFast(file: File, job: Job): ScanResult {
 
             val lower = line.lowercase(Locale.ROOT)
             if (crashMarkers.any { lower.contains(it) }) {
-                crashes.add(CrashEntry(lineNumber, line.take(200)))
+                if (packageFilters.isEmpty() || packageFilters.any { lower.contains(it) }) {
+                    crashes.add(CrashEntry(lineNumber, line.take(200)))
+                }
             }
 
             if (lineNumber % 2000L == 0L) {
@@ -413,7 +422,7 @@ private fun scanFast(file: File, job: Job): ScanResult {
 
 private data class TagAccum(var count: Int, val examples: MutableList<String>)
 
-private fun scanFull(file: File, job: Job, base: ScanResult?): ScanResult {
+private fun scanFull(file: File, job: Job, base: ScanResult?, config: EngineConfig): ScanResult {
     val tags = mutableMapOf<String, TagAccum>()
     val jsonBlocks = mutableListOf<JsonBlockEntry>()
     val totalSize = file.length().coerceAtLeast(1L)
@@ -431,6 +440,8 @@ private fun scanFull(file: File, job: Job, base: ScanResult?): ScanResult {
     var blockPreview = ""
     var blockId = 0
     val maxBlockChars = 20000
+    val tagFilters = config.scanTags.toSet()
+    val packageFilters = config.scanPackages.map { it.lowercase(Locale.ROOT) }
 
     fun appendBlockLine(line: String) {
         if (blockBuilder.length < maxBlockChars) {
@@ -451,10 +462,12 @@ private fun scanFull(file: File, job: Job, base: ScanResult?): ScanResult {
             val tagMatch = tagRegex.find(line)
             val tag = tagMatch?.groupValues?.get(1)
             if (!tag.isNullOrBlank()) {
-                val entry = tags.getOrPut(tag) { TagAccum(0, mutableListOf()) }
-                entry.count += 1
-                if (entry.examples.size < 3) {
-                    entry.examples.add(line.take(200))
+                if (tagFilters.isEmpty() || tagFilters.contains(tag)) {
+                    val entry = tags.getOrPut(tag) { TagAccum(0, mutableListOf()) }
+                    entry.count += 1
+                    if (entry.examples.size < 3) {
+                        entry.examples.add(line.take(200))
+                    }
                 }
             }
 
@@ -498,15 +511,18 @@ private fun scanFull(file: File, job: Job, base: ScanResult?): ScanResult {
                     } else {
                         blockBuilder.toString()
                     }
-                    jsonBlocks.add(
-                        JsonBlockEntry(
-                            id = blockId,
-                            startLine = blockStartLine,
-                            endLine = lineNumber,
-                            preview = blockPreview,
-                            content = content
+                    val haystack = (blockPreview + "\n" + content).lowercase(Locale.ROOT)
+                    if (packageFilters.isEmpty() || packageFilters.any { haystack.contains(it) }) {
+                        jsonBlocks.add(
+                            JsonBlockEntry(
+                                id = blockId,
+                                startLine = blockStartLine,
+                                endLine = lineNumber,
+                                preview = blockPreview,
+                                content = content
+                            )
                         )
-                    )
+                    }
                 }
             }
 
@@ -610,11 +626,14 @@ private class EngineHome(private val home: Path) {
     private val engineDir = home.resolve("engine")
     private val daemonDir = home.resolve("daemon")
     private val cacheDir = home.resolve("cache")
+    private val configDir = home.resolve("config")
+    private val configFile = configDir.resolve("wlh.json")
 
     fun ensure() {
         Files.createDirectories(engineDir)
         Files.createDirectories(daemonDir)
         Files.createDirectories(cacheDir)
+        Files.createDirectories(configDir)
         Files.createDirectories(home.resolve("logs"))
     }
 
@@ -638,8 +657,9 @@ private class EngineHome(private val home: Path) {
         Files.deleteIfExists(target)
     }
 
-    fun cacheKeyFor(file: File): String {
-        val key = "${file.absolutePath}:${file.length()}:${file.lastModified()}"
+    fun cacheKeyFor(file: File, config: EngineConfig): String {
+        val configKey = config.scanPackages.joinToString(",") + "|" + config.scanTags.joinToString(",")
+        val key = "${file.absolutePath}:${file.length()}:${file.lastModified()}:${configKey}"
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(key.toByteArray(StandardCharsets.UTF_8))
         return hash.joinToString("") { "%02x".format(it) }
@@ -654,6 +674,20 @@ private class EngineHome(private val home: Path) {
     fun saveCache(key: String, mode: ScanMode, result: ScanResult, mapper: ObjectMapper) {
         val path = cacheDir.resolve("$key-${mode.name.lowercase(Locale.ROOT)}.json")
         mapper.writeValue(path.toFile(), result)
+    }
+
+    fun readConfig(mapper: ObjectMapper): EngineConfig {
+        if (!Files.exists(configFile)) {
+            return EngineConfig(emptyList(), emptyList())
+        }
+        return try {
+            val node = mapper.readTree(configFile.toFile())
+            val packages = node.path("scanPackages").takeIf { it.isArray }?.map { it.asText() } ?: emptyList()
+            val tags = node.path("scanTags").takeIf { it.isArray }?.map { it.asText() } ?: emptyList()
+            EngineConfig(packages.filter { it.isNotBlank() }, tags.filter { it.isNotBlank() })
+        } catch (ex: Exception) {
+            EngineConfig(emptyList(), emptyList())
+        }
     }
 }
 
