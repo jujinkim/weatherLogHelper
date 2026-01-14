@@ -309,9 +309,10 @@ private fun scanFatalCrashes(
     val crashes = mutableListOf<CrashEntry>()
     val crashLines = mutableSetOf<Long>()
     val crashMarker = "FATAL EXCEPTION:"
+    val appCrashedMarker = "APP CRASHED"
     val processRegex = Regex("Process:\\s*([0-9A-Za-z._-]+)")
 
-    val rgResult = runRgFatalScan(file, packageFilters, processRegex, crashMarker)
+    val rgResult = runRgFatalScan(file, packageFilters, processRegex, crashMarker, appCrashedMarker)
     if (rgResult != null) {
         crashes.addAll(rgResult)
         job.progress = progressCap
@@ -371,6 +372,41 @@ private fun scanFatalCrashes(
                         }
                     }
                 }
+            } else if (line.contains(appCrashedMarker)) {
+                val crashLineNumber = lineNumber
+                val crashLine = line
+                val nextLine = reader.readLine() ?: break
+                lineNumber += 1
+                processedBytes += nextLine.length + 1
+                val tagIndex = nextLine.indexOf("CRASH:")
+                if (tagIndex != -1) {
+                    val packageName = nextLine.substring(tagIndex + "CRASH:".length).trim()
+                        .split(Regex("\\s+"))
+                        .firstOrNull()
+                        ?.lowercase(Locale.ROOT)
+                    if (packageName != null && packageFilters.contains(packageName)) {
+                        val blockLines = mutableListOf(crashLine, nextLine)
+                        var added = 0
+                        while (added < 5) {
+                            val next = reader.readLine() ?: break
+                            lineNumber += 1
+                            processedBytes += next.length + 1
+                            if (next.contains("CRASH")) {
+                                blockLines.add(next)
+                                added += 1
+                            } else {
+                                carry = next
+                                break
+                            }
+                        }
+                        if (crashLines.add(crashLineNumber)) {
+                            crashes.add(CrashEntry(crashLineNumber, blockLines.joinToString("\n")))
+                        }
+                        if (carry != null) {
+                            continue
+                        }
+                    }
+                }
             }
 
             if (lineNumber % 2000L == 0L) {
@@ -386,9 +422,10 @@ private fun runRgFatalScan(
     file: File,
     packageFilters: List<String>,
     processRegex: Regex,
-    crashMarker: String
+    crashMarker: String,
+    appCrashedMarker: String
 ): List<CrashEntry>? {
-    val args = mutableListOf("rg", "-n", "-A", "6", crashMarker)
+    val args = mutableListOf("rg", "-n", "-A", "6", crashMarker, "-e", appCrashedMarker)
     args.add(file.absolutePath)
 
     val process = try {
@@ -408,7 +445,7 @@ private fun runRgFatalScan(
     process.inputStream.bufferedReader().useLines { lines ->
         lines.forEach { raw ->
             if (raw == "--") {
-                processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, crashes, crashLines)
+                processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, appCrashedMarker, crashes, crashLines)
                 blockLines.clear()
                 return@forEach
             }
@@ -419,7 +456,7 @@ private fun runRgFatalScan(
         }
     }
     if (blockLines.isNotEmpty()) {
-        processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, crashes, crashLines)
+        processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, appCrashedMarker, crashes, crashLines)
     }
 
     return if (process.waitFor() == 0) crashes else null
@@ -430,34 +467,69 @@ private fun processFatalBlock(
     packageFilters: List<String>,
     processRegex: Regex,
     crashMarker: String,
+    appCrashedMarker: String,
     crashes: MutableList<CrashEntry>,
     crashLines: MutableSet<Long>
 ) {
     val fatalIndex = blockLines.indexOfFirst { it.second.contains(crashMarker) }
-    if (fatalIndex == -1 || fatalIndex + 1 >= blockLines.size) {
+    if (fatalIndex != -1 && fatalIndex + 1 < blockLines.size) {
+        val (fatalLineNumber, fatalLine) = blockLines[fatalIndex]
+        val processLine = blockLines[fatalIndex + 1].second
+        val match = processRegex.find(processLine) ?: return
+        val packageName = match.groupValues[1].lowercase(Locale.ROOT)
+        if (!packageFilters.contains(packageName)) {
+            return
+        }
+        val block = mutableListOf(fatalLine, processLine)
+        var added = 0
+        for (i in fatalIndex + 2 until blockLines.size) {
+            if (added >= 5) break
+            val line = blockLines[i].second
+            if (line.contains("AndroidRuntime")) {
+                block.add(line)
+                added += 1
+            } else {
+                break
+            }
+        }
+        if (crashLines.add(fatalLineNumber)) {
+            crashes.add(CrashEntry(fatalLineNumber, block.joinToString("\n")))
+        }
         return
     }
-    val (fatalLineNumber, fatalLine) = blockLines[fatalIndex]
-    val processLine = blockLines[fatalIndex + 1].second
-    val match = processRegex.find(processLine) ?: return
-    val packageName = match.groupValues[1].lowercase(Locale.ROOT)
+
+    val crashIndex = blockLines.indexOfFirst { it.second.contains(appCrashedMarker) }
+    if (crashIndex == -1 || crashIndex + 1 >= blockLines.size) {
+        return
+    }
+    val (crashLineNumber, crashLine) = blockLines[crashIndex]
+    val nextLine = blockLines[crashIndex + 1].second
+    val tagIndex = nextLine.indexOf("CRASH:")
+    if (tagIndex == -1) {
+        return
+    }
+    val packageName = nextLine.substring(tagIndex + "CRASH:".length).trim()
+        .split(Regex("\\s+"))
+        .firstOrNull()
+        ?.lowercase(Locale.ROOT)
+        ?: return
     if (!packageFilters.contains(packageName)) {
         return
     }
-    val block = mutableListOf(fatalLine, processLine)
+    val block = mutableListOf(crashLine, nextLine)
     var added = 0
-    for (i in fatalIndex + 2 until blockLines.size) {
+    for (i in crashIndex + 2 until blockLines.size) {
         if (added >= 5) break
         val line = blockLines[i].second
-        if (line.contains("AndroidRuntime")) {
+        if (line.contains("CRASH")) {
             block.add(line)
             added += 1
         } else {
             break
         }
     }
-    if (crashLines.add(fatalLineNumber)) {
-        crashes.add(CrashEntry(fatalLineNumber, block.joinToString("\n")))
+    if (crashLines.add(crashLineNumber)) {
+        crashes.add(CrashEntry(crashLineNumber, block.joinToString("\n")))
     }
 }
 
