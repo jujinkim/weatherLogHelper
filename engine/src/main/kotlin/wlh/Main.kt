@@ -17,7 +17,6 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.time.Instant
-import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -27,8 +26,6 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.system.exitProcess
 
 data class CrashEntry(val line: Long, val preview: String)
-
-data class LineEntry(val line: Long, val text: String)
 
 data class ScanResult(
     val file: String,
@@ -288,7 +285,7 @@ private fun runScan(
 
 private fun scanFull(file: File, job: Job, config: EngineConfig): ScanResult {
     val versions = scanPackageVersions(file, config)
-    val crashes = scanByPackageWindows(file, job, config, 95)
+    val crashes = scanFatalCrashes(file, job, config, 95)
 
     return ScanResult(
         file = file.absolutePath,
@@ -298,7 +295,7 @@ private fun scanFull(file: File, job: Job, config: EngineConfig): ScanResult {
     )
 }
 
-private fun scanByPackageWindows(
+private fun scanFatalCrashes(
     file: File,
     job: Job,
     config: EngineConfig,
@@ -311,9 +308,10 @@ private fun scanByPackageWindows(
 
     val crashes = mutableListOf<CrashEntry>()
     val crashLines = mutableSetOf<Long>()
-    val crashMarkers = listOf("fatal exception", "anr", "fatal signal", "sigsegv", "native crash", "crash")
+    val crashMarker = "FATAL EXCEPTION:"
+    val processRegex = Regex("Process:\\s*([0-9A-Za-z._-]+)")
 
-    val rgResult = runRgScan(file, packageFilters, crashMarkers)
+    val rgResult = runRgFatalScan(file, packageFilters, processRegex, crashMarker)
     if (rgResult != null) {
         crashes.addAll(rgResult)
         job.progress = progressCap
@@ -323,71 +321,74 @@ private fun scanByPackageWindows(
     val totalSize = file.length().coerceAtLeast(1L)
     var processedBytes = 0L
     var lineNumber = 0L
-    val prevLines = ArrayDeque<LineEntry>(3)
-    val activeWindows = mutableListOf<Int>()
-
-    fun processLine(lineNo: Long, line: String) {
-        val lower = line.lowercase(Locale.ROOT)
-        if (crashMarkers.any { lower.contains(it) } && crashLines.add(lineNo)) {
-            crashes.add(CrashEntry(lineNo, line.take(200)))
-        }
-    }
 
     file.bufferedReader().use { reader ->
-        var line = reader.readLine()
-        while (line != null) {
+        var carry: String? = null
+        while (true) {
+            val line = if (carry != null) {
+                val value = carry
+                carry = null
+                value
+            } else {
+                reader.readLine()
+            } ?: break
+
             lineNumber += 1
             processedBytes += line.length + 1
 
-            val lower = line.lowercase(Locale.ROOT)
-            val existingWindows = activeWindows.size
-            if (existingWindows > 0) {
-                processLine(lineNumber, line)
-            }
-
-            if (packageFilters.any { lower.contains(it) }) {
-                for (entry in prevLines) {
-                    processLine(entry.line, entry.text)
-                }
-                if (existingWindows == 0) {
-                    processLine(lineNumber, line)
-                }
-                activeWindows.add(20)
-            }
-
-            if (existingWindows > 0) {
-                for (i in existingWindows - 1 downTo 0) {
-                    val remaining = activeWindows[i] - 1
-                    if (remaining <= 0) {
-                        activeWindows.removeAt(i)
-                    } else {
-                        activeWindows[i] = remaining
+            if (line.contains(crashMarker)) {
+                val fatalLineNumber = lineNumber
+                val fatalLine = line
+                val processLine = reader.readLine() ?: break
+                lineNumber += 1
+                processedBytes += processLine.length + 1
+                val match = processRegex.find(processLine)
+                if (match != null) {
+                    val packageName = match.groupValues[1].lowercase(Locale.ROOT)
+                    if (packageFilters.contains(packageName)) {
+                        val blockLines = mutableListOf(fatalLine, processLine)
+                        var lookahead = 0
+                        while (lookahead < 5) {
+                            val next = reader.readLine()
+                            if (next == null) {
+                                break
+                            }
+                            lineNumber += 1
+                            processedBytes += next.length + 1
+                            lookahead += 1
+                            if (next.contains("AndroidRuntime")) {
+                                blockLines.add(next)
+                            } else {
+                                carry = next
+                                break
+                            }
+                        }
+                        if (crashLines.add(fatalLineNumber)) {
+                            crashes.add(CrashEntry(fatalLineNumber, blockLines.joinToString("\n")))
+                        }
+                        if (carry != null) {
+                            continue
+                        }
                     }
                 }
-            }
-
-            prevLines.addLast(LineEntry(lineNumber, line))
-            if (prevLines.size > 3) {
-                prevLines.removeFirst()
             }
 
             if (lineNumber % 2000L == 0L) {
                 job.progress = ((processedBytes.toDouble() / totalSize) * 100).toInt().coerceIn(0, progressCap)
             }
-            line = reader.readLine()
         }
     }
 
     return crashes
 }
 
-private fun runRgScan(
+private fun runRgFatalScan(
     file: File,
     packageFilters: List<String>,
-    crashMarkers: List<String>
+    processRegex: Regex,
+    crashMarker: String
 ): List<CrashEntry>? {
-    val args = mutableListOf("rg", "-n", "-B", "3", "-A", "20", "-i")
-    packageFilters.forEach { args.addAll(listOf("-e", it)) }
+    val args = mutableListOf("rg", "-n", "-A", "6", crashMarker)
     args.add(file.absolutePath)
 
     val process = try {
@@ -402,22 +403,62 @@ private fun runRgScan(
     val crashLines = mutableSetOf<Long>()
     val lineSeen = mutableSetOf<Long>()
     val lineRegex = Regex("^(\\d+)[-:](.*)$")
+    val blockLines = mutableListOf<Pair<Long, String>>()
 
     process.inputStream.bufferedReader().useLines { lines ->
         lines.forEach { raw ->
-            if (raw == "--") return@forEach
+            if (raw == "--") {
+                processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, crashes, crashLines)
+                blockLines.clear()
+                return@forEach
+            }
             val match = lineRegex.find(raw) ?: return@forEach
             val lineNo = match.groupValues[1].toLongOrNull() ?: return@forEach
             if (!lineSeen.add(lineNo)) return@forEach
-            val line = match.groupValues[2]
-            val lower = line.lowercase(Locale.ROOT)
-            if (crashMarkers.any { lower.contains(it) } && crashLines.add(lineNo)) {
-                crashes.add(CrashEntry(lineNo, line.take(200)))
-            }
+            blockLines.add(lineNo to match.groupValues[2])
         }
+    }
+    if (blockLines.isNotEmpty()) {
+        processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, crashes, crashLines)
     }
 
     return if (process.waitFor() == 0) crashes else null
+}
+
+private fun processFatalBlock(
+    blockLines: List<Pair<Long, String>>,
+    packageFilters: List<String>,
+    processRegex: Regex,
+    crashMarker: String,
+    crashes: MutableList<CrashEntry>,
+    crashLines: MutableSet<Long>
+) {
+    val fatalIndex = blockLines.indexOfFirst { it.second.contains(crashMarker) }
+    if (fatalIndex == -1 || fatalIndex + 1 >= blockLines.size) {
+        return
+    }
+    val (fatalLineNumber, fatalLine) = blockLines[fatalIndex]
+    val processLine = blockLines[fatalIndex + 1].second
+    val match = processRegex.find(processLine) ?: return
+    val packageName = match.groupValues[1].lowercase(Locale.ROOT)
+    if (!packageFilters.contains(packageName)) {
+        return
+    }
+    val block = mutableListOf(fatalLine, processLine)
+    var added = 0
+    for (i in fatalIndex + 2 until blockLines.size) {
+        if (added >= 5) break
+        val line = blockLines[i].second
+        if (line.contains("AndroidRuntime")) {
+            block.add(line)
+            added += 1
+        } else {
+            break
+        }
+    }
+    if (crashLines.add(fatalLineNumber)) {
+        crashes.add(CrashEntry(fatalLineNumber, block.joinToString("\n")))
+    }
 }
 
 private fun scanPackageVersions(file: File, config: EngineConfig): List<String> {

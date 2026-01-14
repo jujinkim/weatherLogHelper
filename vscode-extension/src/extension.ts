@@ -294,6 +294,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             li {
               margin-bottom: 6px;
               font-size: 12px;
+              white-space: pre-wrap;
             }
             .jump {
               background: transparent;
