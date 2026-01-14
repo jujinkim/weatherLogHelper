@@ -570,8 +570,9 @@ function runWlh(args: string[]): Promise<string> {
       }
       if (err) {
         output.appendLine(`WLH exec error: ${err.message}`);
-        const code = (err as NodeJS.ErrnoException).code;
-        const signal = (err as NodeJS.ErrnoException).signal;
+        const errInfo = err as NodeJS.ErrnoException & { signal?: string };
+        const code = errInfo.code;
+        const signal = errInfo.signal;
         output.appendLine(`WLH exec error details: code=${code ?? 'unknown'} signal=${signal ?? 'none'}`);
         if (stdout && stdout.trim().length > 0) {
           resolve(stdout.trim());
