@@ -62,7 +62,8 @@ data class JobStatus(
 
 data class EngineConfig(
     val scanPackages: List<String>,
-    val scanTags: List<String>
+    val scanTags: List<String>,
+    val scanJsonBlocks: Boolean
 )
 
 private data class Job(
@@ -444,8 +445,9 @@ private fun scanFull(file: File, job: Job, base: ScanResult?, config: EngineConf
     var blockPreview = ""
     var blockId = 0
     val maxBlockChars = 20000
-    val tagFilters = config.scanTags.toSet()
-    val packageFilters = config.scanPackages.map { it.lowercase(Locale.ROOT) }
+        val tagFilters = config.scanTags.toSet()
+        val packageFilters = config.scanPackages.map { it.lowercase(Locale.ROOT) }
+        val enableJsonBlocks = config.scanJsonBlocks
 
     fun appendBlockLine(line: String) {
         if (blockBuilder.length < maxBlockChars) {
@@ -475,57 +477,59 @@ private fun scanFull(file: File, job: Job, base: ScanResult?, config: EngineConf
                 }
             }
 
-            if (!inBlock) {
-                val idx = line.indexOf('{')
-                if (idx != -1) {
-                    inBlock = true
-                    blockStartLine = lineNumber
-                    blockBuilder = StringBuilder()
-                    blockPreview = line.take(200)
-                    braceCount = 0
-                    inString = false
-                    escape = false
-                }
-            }
-
-            if (inBlock) {
-                appendBlockLine(line)
-                for (ch in line) {
-                    if (escape) {
+            if (enableJsonBlocks) {
+                if (!inBlock) {
+                    val idx = line.indexOf('{')
+                    if (idx != -1) {
+                        inBlock = true
+                        blockStartLine = lineNumber
+                        blockBuilder = StringBuilder()
+                        blockPreview = line.take(200)
+                        braceCount = 0
+                        inString = false
                         escape = false
-                        continue
-                    }
-                    if (ch == '\\') {
-                        escape = true
-                        continue
-                    }
-                    if (ch == '"') {
-                        inString = !inString
-                    }
-                    if (!inString) {
-                        if (ch == '{') braceCount += 1
-                        if (ch == '}') braceCount -= 1
                     }
                 }
-                if (braceCount == 0) {
-                    inBlock = false
-                    blockId += 1
-                    val content = if (blockBuilder.length >= maxBlockChars) {
-                        blockBuilder.toString() + "..."
-                    } else {
-                        blockBuilder.toString()
+
+                if (inBlock) {
+                    appendBlockLine(line)
+                    for (ch in line) {
+                        if (escape) {
+                            escape = false
+                            continue
+                        }
+                        if (ch == '\\') {
+                            escape = true
+                            continue
+                        }
+                        if (ch == '"') {
+                            inString = !inString
+                        }
+                        if (!inString) {
+                            if (ch == '{') braceCount += 1
+                            if (ch == '}') braceCount -= 1
+                        }
                     }
-                    val haystack = (blockPreview + "\n" + content).lowercase(Locale.ROOT)
-                    if (packageFilters.isEmpty() || packageFilters.any { haystack.contains(it) }) {
-                        jsonBlocks.add(
-                            JsonBlockEntry(
-                                id = blockId,
-                                startLine = blockStartLine,
-                                endLine = lineNumber,
-                                preview = blockPreview,
-                                content = content
+                    if (braceCount == 0) {
+                        inBlock = false
+                        blockId += 1
+                        val content = if (blockBuilder.length >= maxBlockChars) {
+                            blockBuilder.toString() + "..."
+                        } else {
+                            blockBuilder.toString()
+                        }
+                        val haystack = (blockPreview + "\n" + content).lowercase(Locale.ROOT)
+                        if (packageFilters.isEmpty() || packageFilters.any { haystack.contains(it) }) {
+                            jsonBlocks.add(
+                                JsonBlockEntry(
+                                    id = blockId,
+                                    startLine = blockStartLine,
+                                    endLine = lineNumber,
+                                    preview = blockPreview,
+                                    content = content
+                                )
                             )
-                        )
+                        }
                     }
                 }
             }
@@ -697,9 +701,14 @@ private class EngineHome(private val home: Path) {
             val node = mapper.readTree(configFile.toFile())
             val packages = node.path("scanPackages").takeIf { it.isArray }?.map { it.asText() } ?: emptyList()
             val tags = node.path("scanTags").takeIf { it.isArray }?.map { it.asText() } ?: emptyList()
-            EngineConfig(packages.filter { it.isNotBlank() }, tags.filter { it.isNotBlank() })
+            val jsonBlocks = node.path("scanJsonBlocks").asBoolean(true)
+            EngineConfig(
+                packages.filter { it.isNotBlank() },
+                tags.filter { it.isNotBlank() },
+                jsonBlocks
+            )
         } catch (ex: Exception) {
-            EngineConfig(emptyList(), emptyList())
+            EngineConfig(emptyList(), emptyList(), true)
         }
     }
 }

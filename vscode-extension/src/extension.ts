@@ -560,10 +560,11 @@ function readEngineConfig(): EngineConfig {
     const parsed = JSON.parse(raw) as Partial<EngineConfig>;
     return {
       scanPackages: Array.isArray(parsed.scanPackages) ? parsed.scanPackages : [],
-      scanTags: Array.isArray(parsed.scanTags) ? parsed.scanTags : []
+      scanTags: Array.isArray(parsed.scanTags) ? parsed.scanTags : [],
+      scanJsonBlocks: parsed.scanJsonBlocks !== false
     };
   } catch {
-    return { scanPackages: [], scanTags: [] };
+    return { scanPackages: [], scanTags: [], scanJsonBlocks: true };
   }
 }
 
@@ -574,7 +575,8 @@ function openEngineConfig() {
     if (!fs.existsSync(configPath)) {
       const template = {
         scanPackages: [],
-        scanTags: []
+        scanTags: [],
+        scanJsonBlocks: false
       };
       fs.writeFileSync(configPath, JSON.stringify(template, null, 2));
     }
