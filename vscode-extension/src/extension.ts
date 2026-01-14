@@ -60,6 +60,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private lastFilePath = 'No file selected';
   private currentResults: ScanResults | undefined;
   private scanPackages: string[] = [];
+  private lastActiveFile = '';
 
   constructor(
     private readonly onJump: (filePath: string, line: number) => void,
@@ -158,6 +159,14 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     this.lastFilePath = filePath;
     this.lastContent = message;
     this.render();
+  }
+
+  getLastActiveFile(): string {
+    return this.lastActiveFile;
+  }
+
+  setLastActiveFile(value: string) {
+    this.lastActiveFile = value;
   }
 
   updateResults(results: ScanResults, scanPackages: string[] = []) {
@@ -664,6 +673,7 @@ async function refreshSidebarFromActiveEditor() {
     sidebarProvider?.updateStatus('Idle');
     return;
   }
+  sidebarProvider?.setLastActiveFile(filePath);
   sidebarProvider?.updateFilePath(filePath);
   const resultPath = buildResultFilePath(filePath);
   if (!fs.existsSync(resultPath)) {
@@ -913,6 +923,13 @@ export function activate(context: vscode.ExtensionContext) {
     void refreshSidebarFromActiveEditor();
   });
 
+  const pollTimer = setInterval(() => {
+    const active = resolveActiveFilePath() || '';
+    if (active && active !== sidebarProvider?.getLastActiveFile()) {
+      void refreshSidebarFromActiveEditor();
+    }
+  }, 500);
+
   context.subscriptions.push(
     scanCommand,
     refreshCommand,
@@ -926,6 +943,7 @@ export function activate(context: vscode.ExtensionContext) {
     openHomeCommand,
     openListener,
     activeListener,
+    { dispose: () => clearInterval(pollTimer) },
     output
   );
 }
