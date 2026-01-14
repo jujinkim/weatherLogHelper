@@ -11,9 +11,14 @@ type CrashEntry = {
   preview: string;
 };
 
+type VersionEntry = {
+  line: number;
+  label: string;
+};
+
 type ScanResults = {
   filePath: string;
-  versions: string[];
+  versions: Array<VersionEntry | string>;
   crashes: CrashEntry[];
 };
 
@@ -27,9 +32,28 @@ type EngineConfig = {
 };
 
 function normalizeResults(raw: Partial<ScanResults> & { file?: string }): ScanResults {
+  const normalizeVersions = (value: unknown): Array<VersionEntry | string> => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          return entry;
+        }
+        if (entry && typeof entry === 'object') {
+          const maybe = entry as { line?: unknown; label?: unknown };
+          const line = typeof maybe.line === 'number' ? maybe.line : 0;
+          const label = typeof maybe.label === 'string' ? maybe.label : '';
+          return { line, label };
+        }
+        return '';
+      })
+      .filter((entry) => (typeof entry === 'string' ? entry.length > 0 : entry.label.length > 0));
+  };
   return {
     filePath: raw.filePath || raw.file || 'Unknown file',
-    versions: Array.isArray(raw.versions) ? raw.versions : [],
+    versions: normalizeVersions(raw.versions),
     crashes: Array.isArray(raw.crashes) ? raw.crashes : []
   };
 }
@@ -172,7 +196,18 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     const escape = (value: string | undefined | null) =>
       (value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const versions = results.versions.length
-      ? results.versions.map((v) => `<li>${escape(v)}</li>`).join('')
+      ? results.versions
+          .map((v) => {
+            if (typeof v === 'string') {
+              return `<li>${escape(v)}</li>`;
+            }
+            const entry = v as VersionEntry;
+            const label = entry.label ?? '';
+            return entry.line > 0
+              ? `<li><button class="jump" data-line="${entry.line}">L${entry.line}</button> ${escape(label)}</li>`
+              : `<li>${escape(label)}</li>`;
+          })
+          .join('')
       : '<li>None</li>';
     const crashes = results.crashes.length
       ? results.crashes

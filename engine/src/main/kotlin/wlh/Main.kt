@@ -27,9 +27,11 @@ import kotlin.system.exitProcess
 
 data class CrashEntry(val line: Long, val preview: String)
 
+data class VersionEntry(val line: Long, val label: String)
+
 data class ScanResult(
     val file: String,
-    val versions: List<String>,
+    val versions: List<VersionEntry>,
     val crashes: List<CrashEntry>,
     val generatedAt: String
 )
@@ -577,7 +579,7 @@ private fun processFatalBlock(
     }
 }
 
-private fun scanPackageVersions(file: File, config: EngineConfig): List<String> {
+private fun scanPackageVersions(file: File, config: EngineConfig): List<VersionEntry> {
     val packageFilters = config.scanPackages.map { it.lowercase(Locale.ROOT) }.toSet()
     if (packageFilters.isEmpty()) {
         return emptyList()
@@ -589,14 +591,16 @@ private fun scanPackageVersions(file: File, config: EngineConfig): List<String> 
     return scanPackageVersionsStream(file, packageFilters)
 }
 
-private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): List<String> {
-    val versions = linkedSetOf<String>()
+private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): List<VersionEntry> {
+    val versions = linkedSetOf<VersionEntry>()
     val packageRegex = Regex("Package \\[([^\\]]+)] \\(([0-9A-Za-z]+)\\):")
     val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)")
     val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)")
     file.bufferedReader().use { reader ->
+        var lineNumber = 0L
         var line = reader.readLine()
         while (line != null) {
+            lineNumber += 1
             val match = packageRegex.find(line)
             if (match != null) {
                 val packageName = match.groupValues[1].lowercase(Locale.ROOT)
@@ -606,8 +610,10 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
                     var codePathFound = false
                     var systemApp = false
                     var lookahead = 0
+                    val headerLine = lineNumber
                     while (lookahead < 30) {
                         val next = reader.readLine() ?: break
+                        lineNumber += 1
                         lookahead += 1
                         if (!codePathFound && next.contains("codePath")) {
                             codePathFound = true
@@ -635,7 +641,7 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
                                 append(" [System]")
                             }
                         }
-                        versions.add(label)
+                        versions.add(VersionEntry(headerLine, label))
                     }
                 }
             }
@@ -645,7 +651,7 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
     return versions.toList()
 }
 
-private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<String>? {
+private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<VersionEntry>? {
     val args = mutableListOf("rg", "-n", "-A", "30", "Package \\[", file.absolutePath)
     val process = try {
         ProcessBuilder(args)
@@ -654,7 +660,7 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Stri
     } catch (_: Exception) {
         return null
     }
-    val versions = linkedSetOf<String>()
+    val versions = linkedSetOf<VersionEntry>()
     val packageRegex = Regex("Package \\[([^\\]]+)] \\(([0-9A-Za-z]+)\\):")
     val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)")
     val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)")
@@ -666,10 +672,11 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Stri
     var systemApp = false
     var versionCode: String? = null
     var versionName: String? = null
+    var headerLineNumber: Long? = null
     var currentPackage: String? = null
 
     fun flush() {
-        if (currentPackage != null && versionCode != null && versionName != null) {
+        if (currentPackage != null && versionCode != null && versionName != null && headerLineNumber != null) {
             val label = buildString {
                 append(versionName)
                 append(" (")
@@ -679,7 +686,7 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Stri
                     append(" [System]")
                 }
             }
-            versions.add(label)
+            versions.add(VersionEntry(headerLineNumber!!, label))
         }
         active = false
         remaining = 0
@@ -687,6 +694,7 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Stri
         systemApp = false
         versionCode = null
         versionName = null
+        headerLineNumber = null
         currentPackage = null
     }
 
@@ -700,6 +708,7 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Stri
             }
             val match = lineRegex.find(raw) ?: return@forEach
             val line = match.groupValues[2]
+            val lineNumber = match.groupValues[1].toLongOrNull()
             val headerMatch = packageRegex.find(line)
             if (headerMatch != null) {
                 if (active) {
@@ -710,6 +719,7 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Stri
                     active = true
                     remaining = 30
                     currentPackage = packageName
+                    headerLineNumber = lineNumber
                 }
                 return@forEach
             }

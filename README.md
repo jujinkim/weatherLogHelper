@@ -82,7 +82,7 @@ Schema (high level):
 ```json
 {
   "file": "/abs/path/to/log.txt",
-  "versions": ["1.0.0"],
+  "versions": [{ "line": 120, "label": "1.0.0 (12345)" }],
   "crashes": [{ "line": 123, "preview": "..." }],
   "generatedAt": "2024-01-01T00:00:00Z"
 }
