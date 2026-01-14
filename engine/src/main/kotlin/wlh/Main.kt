@@ -287,7 +287,8 @@ private fun runScan(
 }
 
 private fun scanFull(file: File, job: Job, config: EngineConfig): ScanResult {
-    val (versions, crashes) = scanByPackageWindows(file, job, config, 95)
+    val versions = scanPackageVersions(file, config)
+    val crashes = scanByPackageWindows(file, job, config, 95)
 
     return ScanResult(
         file = file.absolutePath,
@@ -302,24 +303,21 @@ private fun scanByPackageWindows(
     job: Job,
     config: EngineConfig,
     progressCap: Int
-): Pair<List<String>, List<CrashEntry>> {
+): List<CrashEntry> {
     val packageFilters = config.scanPackages.map { it.lowercase(Locale.ROOT) }
     if (packageFilters.isEmpty()) {
-        return Pair(emptyList(), emptyList())
+        return emptyList()
     }
 
-    val versions = linkedSetOf<String>()
     val crashes = mutableListOf<CrashEntry>()
     val crashLines = mutableSetOf<Long>()
-    val versionRegex = Regex("(?i)\\bversion[:=\\s]+([0-9][0-9A-Za-z._-]*)")
     val crashMarkers = listOf("fatal exception", "anr", "fatal signal", "sigsegv", "native crash", "crash")
 
-    val rgResult = runRgScan(file, packageFilters, versionRegex, crashMarkers)
+    val rgResult = runRgScan(file, packageFilters, crashMarkers)
     if (rgResult != null) {
-        versions.addAll(rgResult.first)
-        crashes.addAll(rgResult.second)
+        crashes.addAll(rgResult)
         job.progress = progressCap
-        return Pair(versions.toList(), crashes)
+        return crashes
     }
 
     val totalSize = file.length().coerceAtLeast(1L)
@@ -329,9 +327,6 @@ private fun scanByPackageWindows(
     val activeWindows = mutableListOf<Int>()
 
     fun processLine(lineNo: Long, line: String) {
-        versionRegex.find(line)?.let { match ->
-            versions.add(match.groupValues[1])
-        }
         val lower = line.lowercase(Locale.ROOT)
         if (crashMarkers.any { lower.contains(it) } && crashLines.add(lineNo)) {
             crashes.add(CrashEntry(lineNo, line.take(200)))
@@ -383,15 +378,14 @@ private fun scanByPackageWindows(
         }
     }
 
-    return Pair(versions.toList(), crashes)
+    return crashes
 }
 
 private fun runRgScan(
     file: File,
     packageFilters: List<String>,
-    versionRegex: Regex,
     crashMarkers: List<String>
-): Pair<List<String>, List<CrashEntry>>? {
+): List<CrashEntry>? {
     val args = mutableListOf("rg", "-n", "-B", "3", "-A", "20", "-i")
     packageFilters.forEach { args.addAll(listOf("-e", it)) }
     args.add(file.absolutePath)
@@ -404,7 +398,6 @@ private fun runRgScan(
         return null
     }
 
-    val versions = linkedSetOf<String>()
     val crashes = mutableListOf<CrashEntry>()
     val crashLines = mutableSetOf<Long>()
     val lineSeen = mutableSetOf<Long>()
@@ -417,7 +410,6 @@ private fun runRgScan(
             val lineNo = match.groupValues[1].toLongOrNull() ?: return@forEach
             if (!lineSeen.add(lineNo)) return@forEach
             val line = match.groupValues[2]
-            versionRegex.find(line)?.let { versions.add(it.groupValues[1]) }
             val lower = line.lowercase(Locale.ROOT)
             if (crashMarkers.any { lower.contains(it) } && crashLines.add(lineNo)) {
                 crashes.add(CrashEntry(lineNo, line.take(200)))
@@ -425,11 +417,169 @@ private fun runRgScan(
         }
     }
 
-    return if (process.waitFor() == 0) {
-        Pair(versions.toList(), crashes)
-    } else {
-        null
+    return if (process.waitFor() == 0) crashes else null
+}
+
+private fun scanPackageVersions(file: File, config: EngineConfig): List<String> {
+    val packageFilters = config.scanPackages.map { it.lowercase(Locale.ROOT) }.toSet()
+    if (packageFilters.isEmpty()) {
+        return emptyList()
     }
+    val rgResult = runRgVersionScan(file, packageFilters)
+    if (rgResult != null) {
+        return rgResult
+    }
+    return scanPackageVersionsStream(file, packageFilters)
+}
+
+private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): List<String> {
+    val versions = linkedSetOf<String>()
+    val packageRegex = Regex("Package \\[([^\\]]+)] \\(([0-9A-Za-z]+)\\):")
+    val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)")
+    val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)")
+    file.bufferedReader().use { reader ->
+        var line = reader.readLine()
+        while (line != null) {
+            val match = packageRegex.find(line)
+            if (match != null) {
+                val packageName = match.groupValues[1].lowercase(Locale.ROOT)
+                if (packageFilters.contains(packageName)) {
+                    var versionCode: String? = null
+                    var versionName: String? = null
+                    var codePathFound = false
+                    var systemApp = false
+                    var lookahead = 0
+                    while (lookahead < 30) {
+                        val next = reader.readLine() ?: break
+                        lookahead += 1
+                        if (!codePathFound && next.contains("codePath")) {
+                            codePathFound = true
+                            if (next.contains("/system/app")) {
+                                systemApp = true
+                            }
+                        }
+                        if (versionCode == null) {
+                            versionCode = versionCodeRegex.find(next)?.groupValues?.get(1)
+                        }
+                        if (versionName == null) {
+                            versionName = versionNameRegex.find(next)?.groupValues?.get(1)
+                        }
+                        if (versionCode != null && versionName != null && codePathFound) {
+                            break
+                        }
+                    }
+                    if (versionCode != null && versionName != null) {
+                        val label = buildString {
+                            append(versionName)
+                            append(" (")
+                            append(versionCode)
+                            append(")")
+                            if (codePathFound && systemApp) {
+                                append(" [System]")
+                            }
+                        }
+                        versions.add(label)
+                    }
+                }
+            }
+            line = reader.readLine()
+        }
+    }
+    return versions.toList()
+}
+
+private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<String>? {
+    val args = mutableListOf("rg", "-n", "-A", "30", "Package \\[", file.absolutePath)
+    val process = try {
+        ProcessBuilder(args)
+            .redirectErrorStream(true)
+            .start()
+    } catch (_: Exception) {
+        return null
+    }
+    val versions = linkedSetOf<String>()
+    val packageRegex = Regex("Package \\[([^\\]]+)] \\(([0-9A-Za-z]+)\\):")
+    val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)")
+    val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)")
+    val lineRegex = Regex("^(\\d+)[-:](.*)$")
+
+    var active = false
+    var remaining = 0
+    var codePathFound = false
+    var systemApp = false
+    var versionCode: String? = null
+    var versionName: String? = null
+    var currentPackage: String? = null
+
+    fun flush() {
+        if (currentPackage != null && versionCode != null && versionName != null) {
+            val label = buildString {
+                append(versionName)
+                append(" (")
+                append(versionCode)
+                append(")")
+                if (codePathFound && systemApp) {
+                    append(" [System]")
+                }
+            }
+            versions.add(label)
+        }
+        active = false
+        remaining = 0
+        codePathFound = false
+        systemApp = false
+        versionCode = null
+        versionName = null
+        currentPackage = null
+    }
+
+    process.inputStream.bufferedReader().useLines { lines ->
+        lines.forEach { raw ->
+            if (raw == "--") {
+                if (active) {
+                    flush()
+                }
+                return@forEach
+            }
+            val match = lineRegex.find(raw) ?: return@forEach
+            val line = match.groupValues[2]
+            val headerMatch = packageRegex.find(line)
+            if (headerMatch != null) {
+                if (active) {
+                    flush()
+                }
+                val packageName = headerMatch.groupValues[1].lowercase(Locale.ROOT)
+                if (packageFilters.contains(packageName)) {
+                    active = true
+                    remaining = 30
+                    currentPackage = packageName
+                }
+                return@forEach
+            }
+            if (!active || remaining <= 0) {
+                return@forEach
+            }
+            remaining -= 1
+            if (!codePathFound && line.contains("codePath")) {
+                codePathFound = true
+                if (line.contains("/system/app")) {
+                    systemApp = true
+                }
+            }
+            if (versionCode == null) {
+                versionCode = versionCodeRegex.find(line)?.groupValues?.get(1)
+            }
+            if (versionName == null) {
+                versionName = versionNameRegex.find(line)?.groupValues?.get(1)
+            }
+        }
+    }
+
+    if (active) {
+        flush()
+    }
+
+    return if (process.waitFor() == 0) versions.toList() else null
 }
 
 private fun runDecrypt(file: String, jar: String, timeoutSeconds: Int): Map<String, Any> {
