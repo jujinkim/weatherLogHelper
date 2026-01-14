@@ -26,6 +26,14 @@ type EngineConfig = {
   scanPackages: string[];
 };
 
+function normalizeResults(raw: Partial<ScanResults> & { file?: string }): ScanResults {
+  return {
+    filePath: raw.filePath || raw.file || 'Unknown file',
+    versions: Array.isArray(raw.versions) ? raw.versions : [],
+    crashes: Array.isArray(raw.crashes) ? raw.crashes : []
+  };
+}
+
 class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private lastContent = 'No scans yet.';
@@ -161,8 +169,8 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     packageGroups: PackageGroup[] = [],
     scanPackages: string[] = []
   ): string {
-    const escape = (value: string) =>
-      value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escape = (value: string | undefined | null) =>
+      (value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const versions = results.versions.length
       ? results.versions.map((v) => `<li>${escape(v)}</li>`).join('')
       : '<li>None</li>';
@@ -600,7 +608,7 @@ async function scanFastThenFull(filePath: string) {
     }
 
     const raw = await waitForResultFile(filePath, 120_000);
-    const results = JSON.parse(raw) as ScanResults;
+    const results = normalizeResults(JSON.parse(raw));
     const grouped = buildPackageGroups(results, engineConfig.scanPackages);
     sidebarProvider?.updateResults(results, grouped, engineConfig.scanPackages);
     sidebarProvider?.updateStatus('Scan complete');
