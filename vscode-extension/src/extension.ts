@@ -3,6 +3,40 @@ import { execFile } from 'child_process';
 
 const output = vscode.window.createOutputChannel('WLH');
 
+class WlhSidebarProvider implements vscode.WebviewViewProvider {
+  private view: vscode.WebviewView | undefined;
+  private lastContent = 'No scans yet.';
+
+  resolveWebviewView(webviewView: vscode.WebviewView): void {
+    this.view = webviewView;
+    webviewView.webview.options = {
+      enableScripts: false
+    };
+    this.render();
+  }
+
+  update(content: string) {
+    this.lastContent = content;
+    this.render();
+  }
+
+  private render() {
+    if (!this.view) {
+      return;
+    }
+    const safe = this.lastContent
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    this.view.webview.html = `<!DOCTYPE html>
+      <html>
+        <body>
+          <pre>${safe}</pre>
+        </body>
+      </html>`;
+  }
+}
+
 function runWlh(args: string[]): Promise<string> {
   const config = vscode.workspace.getConfiguration('wlh');
   const baseUrl = config.get<string>('update.baseUrl');
@@ -36,8 +70,10 @@ async function scanFastThenFull(filePath: string) {
   try {
     const result = await runWlh(['scan', '--mode', 'fast_then_full', filePath]);
     output.appendLine(result);
+    sidebarProvider?.update(result);
   } catch (err) {
     output.appendLine(`WLH error: ${(err as Error).message}`);
+    sidebarProvider?.update(`Error: ${(err as Error).message}`);
   }
 }
 
@@ -62,7 +98,14 @@ function resolveActiveFilePath(): string | undefined {
   return undefined;
 }
 
+let sidebarProvider: WlhSidebarProvider | undefined;
+
 export function activate(context: vscode.ExtensionContext) {
+  sidebarProvider = new WlhSidebarProvider();
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('wlh.sidebar', sidebarProvider)
+  );
+
   const config = vscode.workspace.getConfiguration('wlh');
   const commandPath = config.get<string>('commandPath') || '';
   const decryptJarPath = config.get<string>('decrypt.jarPath') || '';

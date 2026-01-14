@@ -3,7 +3,7 @@
   "displayName": "Weather Log Helper",
   "description": "Internal WLH client",
   "version": "0.0.1",
-  "publisher": "internal",
+  "publisher": "jujin.kim",
   "author": "jujin.kim",
   "license": "UNLICENSED",
   "repository": {
@@ -16,6 +16,7 @@
   "categories": ["Other"],
   "activationEvents": [
     "onCommand:wlh.scanFastThenFull",
+    "onView:wlh.sidebar",
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
@@ -26,6 +27,14 @@
         "title": "WLH: Scan (Fast then Full)"
       }
     ],
+    "views": {
+      "explorer": [
+        {
+          "id": "wlh.sidebar",
+          "name": "WLH"
+        }
+      ]
+    },
     "configuration": {
       "title": "Weather Log Helper",
       "properties": {
