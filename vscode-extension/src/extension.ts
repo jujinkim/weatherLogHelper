@@ -35,7 +35,10 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private lastContent = 'No scans yet.';
   private currentResults: ScanResults | undefined;
 
-  constructor(private readonly onJump: (filePath: string, line: number) => void) {}
+  constructor(
+    private readonly onJump: (filePath: string, line: number) => void,
+    private readonly onDecrypt: (filePath: string) => void
+  ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -47,6 +50,14 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
         const line = Number(message.line);
         if (!Number.isNaN(line)) {
           this.onJump(this.currentResults.filePath, line);
+        }
+      }
+      if (message?.type === 'decrypt') {
+        const filePath = this.currentResults?.filePath || resolveActiveFilePath();
+        if (filePath) {
+          this.onDecrypt(filePath);
+        } else {
+          vscode.window.showErrorMessage('WLH: No active file to decrypt.');
         }
       }
     });
@@ -120,6 +131,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
         <body>
           <h3>WLH Results</h3>
           <p>${escape(results.filePath)}</p>
+          <button id="decrypt">Run Decrypt</button>
           <h4>Versions</h4>
           <ul>${versions}</ul>
           <h4>Crashes</h4>
@@ -130,6 +142,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
           <ul>${blocks}</ul>
           <script>
             const vscode = acquireVsCodeApi();
+            document.getElementById('decrypt').addEventListener('click', () => {
+              vscode.postMessage({ type: 'decrypt' });
+            });
             document.querySelectorAll('button[data-line]').forEach((button) => {
               button.addEventListener('click', () => {
                 vscode.postMessage({ type: 'jump', line: button.dataset.line });
@@ -249,19 +264,46 @@ function resolveActiveFilePath(): string | undefined {
 let sidebarProvider: WlhSidebarProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  sidebarProvider = new WlhSidebarProvider(async (filePath, line) => {
-    try {
-      const doc = await vscode.workspace.openTextDocument(filePath);
-      const editor = await vscode.window.showTextDocument(doc, { preview: false });
-      const targetLine = Math.max(0, line - 1);
-      const position = new vscode.Position(targetLine, 0);
-      editor.selection = new vscode.Selection(position, position);
-      editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
-    } catch (err) {
-      vscode.window.showErrorMessage(`WLH: Failed to open ${filePath}`);
-      output.appendLine(`Jump error: ${(err as Error).message}`);
+  sidebarProvider = new WlhSidebarProvider(
+    async (filePath, line) => {
+      try {
+        const doc = await vscode.workspace.openTextDocument(filePath);
+        const editor = await vscode.window.showTextDocument(doc, { preview: false });
+        const targetLine = Math.max(0, line - 1);
+        const position = new vscode.Position(targetLine, 0);
+        editor.selection = new vscode.Selection(position, position);
+        editor.revealRange(
+          new vscode.Range(position, position),
+          vscode.TextEditorRevealType.InCenter
+        );
+      } catch (err) {
+        vscode.window.showErrorMessage(`WLH: Failed to open ${filePath}`);
+        output.appendLine(`Jump error: ${(err as Error).message}`);
+      }
+    },
+    async (filePath) => {
+      const config = vscode.workspace.getConfiguration('wlh');
+      const jarPath = config.get<string>('decrypt.jarPath') || '';
+      if (!jarPath.trim()) {
+        vscode.window.showErrorMessage('WLH: Set wlh.decrypt.jarPath before decrypt.');
+        return;
+      }
+      try {
+        sidebarProvider?.update('Decrypting...');
+        const result = await runWlhJson<Record<string, unknown>>([
+          'decrypt',
+          filePath,
+          '--jar',
+          jarPath
+        ]);
+        sidebarProvider?.update(JSON.stringify(result));
+      } catch (err) {
+        const message = (err as Error).message;
+        vscode.window.showErrorMessage(`WLH: Decrypt failed: ${message}`);
+        sidebarProvider?.update(`Error: ${message}`);
+      }
     }
-  });
+  );
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('wlh.sidebar', sidebarProvider)
   );
