@@ -370,6 +370,14 @@ private fun scanByPackageWindows(
     val versionRegex = Regex("(?i)\\bversion[:=\\s]+([0-9][0-9A-Za-z._-]*)")
     val crashMarkers = listOf("fatal exception", "anr", "fatal signal", "sigsegv", "native crash", "crash")
 
+    val rgResult = runRgScan(file, packageFilters, versionRegex, crashMarkers)
+    if (rgResult != null) {
+        versions.addAll(rgResult.first)
+        crashes.addAll(rgResult.second)
+        job.progress = progressCap
+        return Pair(versions.toList(), crashes)
+    }
+
     val totalSize = file.length().coerceAtLeast(1L)
     var processedBytes = 0L
     var lineNumber = 0L
@@ -432,6 +440,52 @@ private fun scanByPackageWindows(
     }
 
     return Pair(versions.toList(), crashes)
+}
+
+private fun runRgScan(
+    file: File,
+    packageFilters: List<String>,
+    versionRegex: Regex,
+    crashMarkers: List<String>
+): Pair<List<String>, List<CrashEntry>>? {
+    val args = mutableListOf("rg", "-n", "-B", "3", "-A", "20", "-i")
+    packageFilters.forEach { args.addAll(listOf("-e", it)) }
+    args.add(file.absolutePath)
+
+    val process = try {
+        ProcessBuilder(args)
+            .redirectErrorStream(true)
+            .start()
+    } catch (_: Exception) {
+        return null
+    }
+
+    val versions = linkedSetOf<String>()
+    val crashes = mutableListOf<CrashEntry>()
+    val crashLines = mutableSetOf<Long>()
+    val lineSeen = mutableSetOf<Long>()
+    val lineRegex = Regex("^(\\d+)[-:](.*)$")
+
+    process.inputStream.bufferedReader().useLines { lines ->
+        lines.forEach { raw ->
+            if (raw == "--") return@forEach
+            val match = lineRegex.find(raw) ?: return@forEach
+            val lineNo = match.groupValues[1].toLongOrNull() ?: return@forEach
+            if (!lineSeen.add(lineNo)) return@forEach
+            val line = match.groupValues[2]
+            versionRegex.find(line)?.let { versions.add(it.groupValues[1]) }
+            val lower = line.lowercase(Locale.ROOT)
+            if (crashMarkers.any { lower.contains(it) } && crashLines.add(lineNo)) {
+                crashes.add(CrashEntry(lineNo, line.take(200)))
+            }
+        }
+    }
+
+    return if (process.waitFor() == 0) {
+        Pair(versions.toList(), crashes)
+    } else {
+        null
+    }
 }
 
 private fun runDecrypt(file: String, jar: String, timeoutSeconds: Int): Map<String, Any> {

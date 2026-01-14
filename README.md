@@ -118,6 +118,7 @@ Environment variables are not used for base URL resolution.
 ## Troubleshooting
 
 - Java not found: set `JAVA_HOME` or ensure `java` is on PATH.
+- Slow scans: install `rg` (ripgrep) on the machine; WLH will use it automatically when available.
 - Stale daemon: `wlh stop` then `wlh start`.
 - Update failures: WLH continues using the last installed engine when possible.
 
