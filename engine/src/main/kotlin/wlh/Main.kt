@@ -769,11 +769,24 @@ private fun runDecrypt(file: String, jar: String, timeoutSeconds: Int): Map<Stri
         return mapOf("status" to "error", "message" to "decrypt_launch_failed")
     }
 
+    val drainThread = Thread {
+        process.inputStream.use { stream ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val read = stream.read(buffer)
+                if (read <= 0) break
+            }
+        }
+    }
+    drainThread.isDaemon = true
+    drainThread.start()
+
     val finished = process.waitFor(timeoutSeconds.toLong(), TimeUnit.SECONDS)
     if (!finished) {
         process.destroyForcibly()
         return mapOf("status" to "error", "message" to "timeout", "input" to input.absolutePath, "output" to output.absolutePath)
     }
+    drainThread.join(1000)
 
     val hasOutput = output.exists() && output.length() > 0L
     return if (hasOutput) {
