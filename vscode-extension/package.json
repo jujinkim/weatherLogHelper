@@ -16,6 +16,14 @@
   "categories": ["Other"],
   "activationEvents": [
     "onCommand:wlh.scanFastThenFull",
+    "onCommand:wlh.decryptCurrentFile",
+    "onCommand:wlh.openSettings",
+    "onCommand:wlh.status",
+    "onCommand:wlh.start",
+    "onCommand:wlh.restart",
+    "onCommand:wlh.stop",
+    "onCommand:wlh.runEngineDirect",
+    "onCommand:wlh.openHome",
     "onView:wlh.sidebar",
     "onStartupFinished"
   ],
