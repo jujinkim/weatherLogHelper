@@ -358,6 +358,7 @@ function resolveActiveFilePath(): string | undefined {
 }
 
 let sidebarProvider: WlhSidebarProvider | undefined;
+let activated = false;
 
 function resolveDefaultHome(): string {
   return path.join(os.homedir(), '.wlh');
@@ -396,6 +397,10 @@ async function runWlhCommand(args: string[], label: string) {
 }
 
 export function activate(context: vscode.ExtensionContext) {
+  if (activated) {
+    return;
+  }
+  activated = true;
   sidebarProvider = new WlhSidebarProvider(
     async (filePath, line) => {
       try {
