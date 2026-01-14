@@ -82,7 +82,6 @@ Schema (high level):
 ```json
 {
   "file": "/abs/path/to/log.txt",
-  "mode": "full",
   "versions": ["1.0.0"],
   "crashes": [{ "line": 123, "preview": "..." }],
   "generatedAt": "2024-01-01T00:00:00Z"

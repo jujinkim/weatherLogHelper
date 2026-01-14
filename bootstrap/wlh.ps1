@@ -210,10 +210,10 @@ function Proxy-Status($home) {
   Write-Output ($resp | ConvertTo-Json -Compress)
 }
 
-function Proxy-Scan($home, $file, $mode) {
+function Proxy-Scan($home, $file) {
   if (-not (Is-DaemonAlive $home)) { Start-Daemon $home $BaseUrl $NoUpdate | Out-Null }
   $info = Read-DaemonInfo $home
-  $payload = @{ file = $file; mode = $mode } | ConvertTo-Json -Compress
+  $payload = @{ file = $file } | ConvertTo-Json -Compress
   $resp = Invoke-RestMethod -UseBasicParsing -Method Post -Uri "http://127.0.0.1:$($info.port)/api/v1/scan" -ContentType "application/json" -Body $payload
   Write-Output ($resp | ConvertTo-Json -Compress)
 }
@@ -300,19 +300,19 @@ switch ($Command) {
       $file = $ArgsList[$i]
     }
     if (-not $file) { Write-ErrorJson "missing_file"; exit 1 }
-    Proxy-Scan $Home $file "full"
+    Proxy-Scan $Home $file
   }
   "versions" {
     $file = $ArgsList[0]
     if (-not $file) { Write-ErrorJson "missing_file"; exit 1 }
-    $scan = Proxy-Scan $Home $file "full" | ConvertFrom-Json
+    $scan = Proxy-Scan $Home $file | ConvertFrom-Json
     if (-not (Wait-Job $Home $scan.jobId)) { Write-ErrorJson "scan_failed"; exit 1 }
     Proxy-Result $Home "versions" ""
   }
   "crashes" {
     $file = $ArgsList[0]
     if (-not $file) { Write-ErrorJson "missing_file"; exit 1 }
-    $scan = Proxy-Scan $Home $file "full" | ConvertFrom-Json
+    $scan = Proxy-Scan $Home $file | ConvertFrom-Json
     if (-not (Wait-Job $Home $scan.jobId)) { Write-ErrorJson "scan_failed"; exit 1 }
     Proxy-Result $Home "crashes" ""
   }

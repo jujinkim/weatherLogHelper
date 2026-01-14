@@ -26,19 +26,12 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.system.exitProcess
 
-enum class ScanMode {
-    FAST,
-    FULL,
-    FAST_THEN_FULL
-}
-
 data class CrashEntry(val line: Long, val preview: String)
 
 data class LineEntry(val line: Long, val text: String)
 
 data class ScanResult(
     val file: String,
-    val mode: String,
     val versions: List<String>,
     val crashes: List<CrashEntry>,
     val generatedAt: String
@@ -58,7 +51,6 @@ data class EngineConfig(
 private data class Job(
     val id: String,
     val file: String,
-    val mode: ScanMode,
     @Volatile var status: String,
     @Volatile var progress: Int,
     @Volatile var message: String? = null
@@ -149,19 +141,8 @@ private fun route(
             val body = readBody(exchange)
             val node = mapper.readTree(body)
             val file = node.path("file").asText(null)
-            val modeRaw = node.path("mode").asText(null)
-            if (file == null || modeRaw == null) {
+            if (file == null) {
                 sendJson(exchange, 400, mapper.writeValueAsString(mapOf("status" to "error", "message" to "missing_fields")))
-                return
-            }
-            val mode = when (modeRaw.lowercase(Locale.ROOT)) {
-                "fast" -> ScanMode.FAST
-                "full" -> ScanMode.FULL
-                "fast_then_full" -> ScanMode.FAST_THEN_FULL
-                else -> null
-            }
-            if (mode == null) {
-                sendJson(exchange, 400, mapper.writeValueAsString(mapOf("status" to "error", "message" to "invalid_mode")))
                 return
             }
             val target = File(file)
@@ -170,7 +151,7 @@ private fun route(
                 return
             }
             val jobId = jobIdCounter.incrementAndGet().toString()
-            val job = Job(jobId, target.absolutePath, mode, "running", 0)
+            val job = Job(jobId, target.absolutePath, "running", 0)
             jobs[jobId] = job
             executor.submit {
                 runScan(job, target, engineHome, mapper, lastResult)
@@ -285,7 +266,7 @@ private fun runScan(
     try {
         val config = engineHome.readConfig(mapper)
         val cacheKey = engineHome.cacheKeyFor(file, config)
-        val cached = engineHome.loadCache(cacheKey, job.mode, mapper)
+        val cached = engineHome.loadCache(cacheKey, mapper)
         if (cached != null) {
             job.status = "completed"
             job.progress = 100
@@ -293,31 +274,10 @@ private fun runScan(
             engineHome.writeResultFile(file, cached, mapper)
             return
         }
-
-        when (job.mode) {
-            ScanMode.FAST -> {
-                val result = scanFast(file, job, config)
-                engineHome.saveCache(cacheKey, job.mode, result, mapper)
-                lastResult.set(result)
-                engineHome.writeResultFile(file, result, mapper)
-            }
-            ScanMode.FULL -> {
-                val result = scanFull(file, job, null, config)
-                engineHome.saveCache(cacheKey, job.mode, result, mapper)
-                lastResult.set(result)
-                engineHome.writeResultFile(file, result, mapper)
-            }
-            ScanMode.FAST_THEN_FULL -> {
-                val fastCache = engineHome.loadCache(cacheKey, ScanMode.FAST, mapper)
-                val fastResult = fastCache ?: scanFast(file, job, config)
-                job.progress = 50
-                val fullCache = engineHome.loadCache(cacheKey, ScanMode.FULL, mapper)
-                val finalResult = fullCache ?: scanFull(file, job, fastResult, config)
-                engineHome.saveCache(cacheKey, ScanMode.FULL, finalResult, mapper)
-                lastResult.set(finalResult)
-                engineHome.writeResultFile(file, finalResult, mapper)
-            }
-        }
+        val result = scanFull(file, job, config)
+        engineHome.saveCache(cacheKey, result, mapper)
+        lastResult.set(result)
+        engineHome.writeResultFile(file, result, mapper)
         job.status = "completed"
         job.progress = 100
     } catch (ex: Exception) {
@@ -326,27 +286,11 @@ private fun runScan(
     }
 }
 
-private fun scanFast(file: File, job: Job, config: EngineConfig): ScanResult {
-    val (versions, crashes) = scanByPackageWindows(file, job, config, 90)
-
-    return ScanResult(
-        file = file.absolutePath,
-        mode = "fast",
-        versions = versions,
-        crashes = crashes,
-        generatedAt = Instant.now().toString()
-    )
-}
-
-private fun scanFull(file: File, job: Job, base: ScanResult?, config: EngineConfig): ScanResult {
-    if (base != null) {
-        return base.copy(mode = "full", generatedAt = Instant.now().toString())
-    }
+private fun scanFull(file: File, job: Job, config: EngineConfig): ScanResult {
     val (versions, crashes) = scanByPackageWindows(file, job, config, 95)
 
     return ScanResult(
         file = file.absolutePath,
-        mode = "full",
         versions = versions,
         crashes = crashes,
         generatedAt = Instant.now().toString()
@@ -608,14 +552,14 @@ private class EngineHome(private val home: Path) {
         return hash.joinToString("") { "%02x".format(it) }
     }
 
-    fun loadCache(key: String, mode: ScanMode, mapper: ObjectMapper): ScanResult? {
-        val path = cacheDir.resolve("$key-${mode.name.lowercase(Locale.ROOT)}.json")
+    fun loadCache(key: String, mapper: ObjectMapper): ScanResult? {
+        val path = cacheDir.resolve("$key-scan.json")
         if (!Files.exists(path)) return null
         return mapper.readValue(path.toFile())
     }
 
-    fun saveCache(key: String, mode: ScanMode, result: ScanResult, mapper: ObjectMapper) {
-        val path = cacheDir.resolve("$key-${mode.name.lowercase(Locale.ROOT)}.json")
+    fun saveCache(key: String, result: ScanResult, mapper: ObjectMapper) {
+        val path = cacheDir.resolve("$key-scan.json")
         mapper.writeValue(path.toFile(), result)
     }
 

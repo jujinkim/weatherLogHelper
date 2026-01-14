@@ -583,7 +583,7 @@ async function waitForResultFile(filePath: string, timeoutMs: number): Promise<s
   throw new Error('result_file_timeout');
 }
 
-async function scanFastThenFull(filePath: string) {
+async function scanFull(filePath: string) {
   output.appendLine(`Scanning ${filePath}`);
   sidebarProvider?.update('Scanning...');
   sidebarProvider?.updateStatus('Scanning...');
@@ -598,8 +598,6 @@ async function scanFastThenFull(filePath: string) {
   try {
     const scanResult = await runWlhJson<{ status: string; jobId?: string }>([
       'scan',
-      '--mode',
-      'full',
       filePath
     ]);
     if (scanResult.status !== 'ok') {
@@ -773,7 +771,7 @@ export function activate(context: vscode.ExtensionContext) {
       await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(homePath));
     },
     async (filePath) => {
-      await scanFastThenFull(filePath);
+      await scanFull(filePath);
     }
   );
   context.subscriptions.push(
@@ -789,13 +787,13 @@ export function activate(context: vscode.ExtensionContext) {
   if (!decryptJarPath.trim()) {
     vscode.window.showErrorMessage('WLH: Set wlh.decrypt.jarPath before use.');
   }
-  const scanCommand = vscode.commands.registerCommand('wlh.scanFastThenFull', async () => {
+  const scanCommand = vscode.commands.registerCommand('wlh.scan', async () => {
     const filePath = resolveActiveFilePath();
     if (!filePath) {
       vscode.window.showInformationMessage('WLH: No active file');
       return;
     }
-    await scanFastThenFull(filePath);
+    await scanFull(filePath);
   });
   const decryptCommand = vscode.commands.registerCommand('wlh.decryptCurrentFile', async () => {
     const filePath = resolveActiveFilePath();
@@ -835,7 +833,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
     const lower = doc.fileName.toLowerCase();
     if (lower.endsWith('.log') || lower.endsWith('.txt')) {
-      await scanFastThenFull(doc.fileName);
+      await scanFull(doc.fileName);
     }
   });
   const activeListener = vscode.window.onDidChangeActiveTextEditor((editor) => {

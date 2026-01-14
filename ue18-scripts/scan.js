@@ -11,7 +11,7 @@ if (!fso.FileExists(configPath)) {
     UltraEdit.outputWindow.write("Missing wlhPath in wlh.config.json\n");
   } else {
     var filePath = UltraEdit.activeDocument.path + UltraEdit.activeDocument.name;
-    var cmd = "\"" + wlhPath + "\" scan --mode fast \"" + filePath + "\"";
+    var cmd = "\"" + wlhPath + "\" scan \"" + filePath + "\"";
     var exec = shell.Exec(cmd);
     var output = exec.StdOut.ReadAll();
     UltraEdit.outputWindow.write(output);

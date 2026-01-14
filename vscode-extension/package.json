@@ -15,7 +15,7 @@
   },
   "categories": ["Other"],
   "activationEvents": [
-    "onCommand:wlh.scanFastThenFull",
+    "onCommand:wlh.scan",
     "onCommand:wlh.decryptCurrentFile",
     "onCommand:wlh.openSettings",
     "onCommand:wlh.status",
@@ -31,8 +31,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "wlh.scanFastThenFull",
-        "title": "WLH: Scan (Fast then Full)"
+        "command": "wlh.scan",
+        "title": "WLH: Scan"
       },
       {
         "command": "wlh.decryptCurrentFile",

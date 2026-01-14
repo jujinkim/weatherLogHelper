@@ -369,15 +369,14 @@ proxy_status() {
 }
 
 proxy_scan() {
-  local mode="$1"
-  local file="$2"
+  local file="$1"
   if ! is_daemon_alive; then
     start_daemon >/dev/null
   fi
   readarray -t vals < <(parse_daemon_json "$WLH_HOME/daemon/daemon.json" || true)
   local port="${vals[0]:-}"
   local payload
-  payload=$(printf '{"file":"%s","mode":"%s"}' "$file" "$mode")
+  payload=$(printf '{"file":"%s"}' "$file")
   http_post "http://127.0.0.1:${port}/api/v1/scan" "$payload" || json_error "scan_failed"
 }
 
@@ -555,7 +554,7 @@ case "$COMMAND" in
       json_error "missing_file"
       exit 1
     fi
-    proxy_scan "full" "$file"
+    proxy_scan "$file"
     ;;
   versions)
     file="${REMAINING[0]:-}"
@@ -563,7 +562,7 @@ case "$COMMAND" in
       json_error "missing_file"
       exit 1
     fi
-    scan_json=$(proxy_scan "full" "$file")
+    scan_json=$(proxy_scan "$file")
     job_id=$(extract_job_id "$scan_json")
     if [ -z "$job_id" ]; then
       printf '%s\n' "$scan_json"
@@ -583,7 +582,7 @@ case "$COMMAND" in
       json_error "missing_file"
       exit 1
     fi
-    scan_json=$(proxy_scan "full" "$file")
+    scan_json=$(proxy_scan "$file")
     job_id=$(extract_job_id "$scan_json")
     if [ -z "$job_id" ]; then
       printf '%s\n' "$scan_json"
