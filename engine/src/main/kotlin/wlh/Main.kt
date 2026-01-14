@@ -563,16 +563,16 @@ private fun processFatalBlock(
     }
     val (anrLineNumber, anrLine) = blockLines[anrIndex]
     val match = anrRegex.find(anrLine) ?: return
-    val packageName = match.groupValues[1].lowercase(Locale.ROOT)
-    if (!packageFilters.contains(packageName)) {
+    val anrPackage = match.groupValues[1].lowercase(Locale.ROOT)
+    if (!packageFilters.contains(anrPackage)) {
         return
     }
     val anrBlock = mutableListOf(anrLine)
-    var added = 0
+    var anrAdded = 0
     for (i in anrIndex + 1 until blockLines.size) {
-        if (added >= 5) break
+        if (anrAdded >= 5) break
         anrBlock.add(blockLines[i].second)
-        added += 1
+        anrAdded += 1
     }
     if (crashLines.add(anrLineNumber)) {
         crashes.add(CrashEntry(anrLineNumber, anrBlock.joinToString("\n")))
