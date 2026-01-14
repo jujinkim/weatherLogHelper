@@ -722,8 +722,16 @@ async function decryptFile(filePath: string) {
           const doc = await vscode.workspace.openTextDocument(outputPath);
           await vscode.window.showTextDocument(doc, { preview: false });
         } catch (err) {
-          output.appendLine(`Decrypt open error: ${(err as Error).message}`);
-          vscode.window.showErrorMessage('WLH: Decrypt succeeded but failed to open output file.');
+          const message = (err as Error).message;
+          output.appendLine(`Decrypt open error: ${message}`);
+          try {
+            await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(outputPath));
+          } catch (openErr) {
+            output.appendLine(`Decrypt open fallback error: ${(openErr as Error).message}`);
+          }
+          vscode.window.showErrorMessage(
+            'WLH: Decrypt succeeded but VSCode could not fully sync the output file. Increase large file limits if needed.'
+          );
         }
       }
     } else {
