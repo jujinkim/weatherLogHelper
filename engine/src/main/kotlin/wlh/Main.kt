@@ -569,9 +569,13 @@ private fun runDecrypt(file: String, jar: String, timeoutSeconds: Int): Map<Stri
 
     val deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeoutSeconds.toLong())
     while (System.currentTimeMillis() < deadline) {
-        if (output.exists() && output.length() > 0L) {
-            process.destroy()
-            return mapOf("status" to "ok", "input" to input.absolutePath, "output" to output.absolutePath)
+        val hasOutput = output.exists() && output.length() > 0L
+        if (!process.isAlive) {
+            return if (hasOutput) {
+                mapOf("status" to "ok", "input" to input.absolutePath, "output" to output.absolutePath)
+            } else {
+                mapOf("status" to "error", "message" to "decrypt_failed", "input" to input.absolutePath, "output" to output.absolutePath)
+            }
         }
         Thread.sleep(300)
     }
