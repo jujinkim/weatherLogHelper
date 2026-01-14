@@ -246,12 +246,15 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             .join('')
         : '<li>None</li>';
 
+    const packageOptions: string[] = [];
     const packageSections =
       packageGroups.length > 0
         ? packageGroups
-            .map(
-              (group) => `
-                <div class="section">
+            .map((group, index) => {
+              const value = `pkg-${index}`;
+              packageOptions.push(`<option value="${value}">${escape(group.name)}</option>`);
+              return `
+                <div class="section" data-package="${value}">
                   <h4>Package: ${escape(group.name)}</h4>
                   <div class="subsection">
                     <h4>Crashes</h4>
@@ -262,8 +265,8 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
                     <ul>${renderEntries(group.jsonBlocks, 'startLine')}</ul>
                   </div>
                 </div>
-              `
-            )
+              `;
+            })
             .join('')
         : '';
 
@@ -285,7 +288,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
 
     const unmatchedSection = unmatched
       ? `
-          <div class="section">
+          <div class="section" data-package="unmatched">
             <h4>Package: ${escape(unmatched.name)}</h4>
             <div class="subsection">
               <h4>Crashes</h4>
@@ -393,12 +396,20 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               color: var(--vscode-descriptionForeground);
               white-space: pre-wrap;
             }
+            select {
+              background: var(--vscode-dropdown-background);
+              color: var(--vscode-dropdown-foreground);
+              border: 1px solid var(--vscode-dropdown-border);
+              border-radius: 6px;
+              padding: 6px 8px;
+              font-size: 12px;
+              width: 100%;
+            }
           </style>
         </head>
         <body>
           <div class="card">
             <h3>Weather Log Helper</h3>
-            <div class="path">${escape(results.filePath)}</div>
             <div class="actions">
               <button id="status">Status</button>
               <button id="start">Start</button>
@@ -419,6 +430,14 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             </div>
             <div class="status">Status: ${escape(this.lastStatus)}</div>
             ${messageSection}
+            <div class="section">
+              <h4>Package Filter</h4>
+              <select id="packageSelect">
+                <option value="all">All</option>
+                ${packageOptions.join('')}
+                ${unmatched ? '<option value="unmatched">Unmatched</option>' : ''}
+              </select>
+            </div>
             <h4>Versions</h4>
             <ul>${versions}</ul>
             <h4>Crashes</h4>
@@ -463,6 +482,19 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             document.getElementById('openSettings').addEventListener('click', () => {
               vscode.postMessage({ type: 'openSettings' });
             });
+            const packageSelect = document.getElementById('packageSelect');
+            if (packageSelect) {
+              packageSelect.addEventListener('change', () => {
+                const value = packageSelect.value;
+                document.querySelectorAll('[data-package]').forEach((section) => {
+                  if (value === 'all') {
+                    section.style.display = '';
+                  } else {
+                    section.style.display = section.getAttribute('data-package') === value ? '' : 'none';
+                  }
+                });
+              });
+            }
             document.querySelectorAll('button[data-line]').forEach((button) => {
               button.addEventListener('click', () => {
                 vscode.postMessage({ type: 'jump', line: button.dataset.line });
@@ -485,11 +517,16 @@ function normalizeCommandPath(value: string): string {
   return trimmed;
 }
 
+function isWindows(): boolean {
+  return process.platform === 'win32';
+}
+
 function resolveWlhCommand(commandPath: string, args: string[]): { command: string; args: string[] } {
   const normalized = normalizeCommandPath(commandPath);
   const lower = normalized.toLowerCase();
   if (lower.endsWith('.sh')) {
-    return { command: 'bash', args: [normalized, ...args] };
+    const shell = isWindows() ? 'bash.exe' : 'bash';
+    return { command: shell, args: [normalized, ...args] };
   }
   if (lower.endsWith('.bat') || lower.endsWith('.cmd')) {
     return { command: 'cmd', args: ['/c', normalized, ...args] };
