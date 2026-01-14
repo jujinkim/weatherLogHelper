@@ -538,9 +538,18 @@ function runWlh(args: string[]): Promise<string> {
   const config = vscode.workspace.getConfiguration('wlh');
   const baseUrl = config.get<string>('update.baseUrl');
   const commandPath = config.get<string>('commandPath') || 'wlh';
-  if (!commandPath || commandPath.trim().length === 0) {
+  const normalizedPath = normalizeCommandPath(commandPath);
+  if (!commandPath || normalizedPath.trim().length === 0) {
     vscode.window.showErrorMessage('WLH: Configure wlh.commandPath to the bootstrap script.');
     return Promise.reject(new Error('wlh_command_missing'));
+  }
+  if (isWindows() && normalizedPath.toLowerCase().endsWith('.sh')) {
+    vscode.window.showErrorMessage('WLH: Use the .bat bootstrap on Windows.');
+    return Promise.reject(new Error('wlh_command_windows_sh'));
+  }
+  if ((normalizedPath.includes('/') || normalizedPath.includes('\\')) && !fs.existsSync(normalizedPath)) {
+    vscode.window.showErrorMessage(`WLH: command path not found: ${normalizedPath}`);
+    return Promise.reject(new Error('wlh_command_not_found'));
   }
   const finalArgs = [...args];
   if (baseUrl && baseUrl.length > 0) {
@@ -561,6 +570,9 @@ function runWlh(args: string[]): Promise<string> {
       }
       if (err) {
         output.appendLine(`WLH exec error: ${err.message}`);
+        const code = (err as NodeJS.ErrnoException).code;
+        const signal = (err as NodeJS.ErrnoException).signal;
+        output.appendLine(`WLH exec error details: code=${code ?? 'unknown'} signal=${signal ?? 'none'}`);
         if (stdout && stdout.trim().length > 0) {
           resolve(stdout.trim());
           return;
