@@ -782,10 +782,19 @@ async function decryptFile(filePath: string) {
       jarPath
     ]);
     const status = String(result.status || '');
+    const outputPath = String(result.output || '');
     output.appendLine(JSON.stringify(result));
     if (status === 'ok') {
       sidebarProvider?.update(JSON.stringify(result));
       sidebarProvider?.updateStatus('Decrypt complete');
+      if (outputPath) {
+        try {
+          const doc = await vscode.workspace.openTextDocument(outputPath);
+          await vscode.window.showTextDocument(doc, { preview: false });
+        } catch (err) {
+          output.appendLine(`Decrypt open error: ${(err as Error).message}`);
+        }
+      }
     } else {
       const message = String(result.message || 'decrypt_failed');
       vscode.window.showErrorMessage(`WLH: Decrypt failed: ${message}`);
