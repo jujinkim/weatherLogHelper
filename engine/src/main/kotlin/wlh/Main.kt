@@ -313,7 +313,7 @@ private fun scanFatalCrashes(
     val crashMarker = "FATAL EXCEPTION:"
     val appCrashedMarker = "APP CRASHED"
     val anrRegex = Regex("ANR in\\s+([0-9A-Za-z._-]+)")
-    val processRegex = Regex("Process:\\s*([0-9A-Za-z._-]+)")
+    val processRegex = Regex("Process:\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
 
     val rgResult = runRgFatalScan(file, packageFilters, processRegex, crashMarker, appCrashedMarker, anrRegex)
     if (rgResult != null) {
@@ -366,7 +366,7 @@ private fun scanFatalCrashes(
                             lineNumber += 1
                             processedBytes += next.length + 1
                             lookahead += 1
-                            if (next.contains("AndroidRuntime")) {
+                            if (next.contains("AndroidRuntime", ignoreCase = true)) {
                                 blockLines.add(next)
                             } else {
                                 carry = next
@@ -388,7 +388,7 @@ private fun scanFatalCrashes(
                 val nextLine = reader.readLine() ?: break
                 lineNumber += 1
                 processedBytes += nextLine.length + 1
-                val tagIndex = nextLine.indexOf("CRASH:")
+                val tagIndex = nextLine.indexOf("CRASH:", ignoreCase = true)
                 if (tagIndex != -1) {
                     val packageName = nextLine.substring(tagIndex + "CRASH:".length).trim()
                         .split(Regex("\\s+"))
@@ -401,7 +401,7 @@ private fun scanFatalCrashes(
                             val next = reader.readLine() ?: break
                             lineNumber += 1
                             processedBytes += next.length + 1
-                            if (next.contains("CRASH")) {
+                            if (next.contains("CRASH", ignoreCase = true)) {
                                 blockLines.add(next)
                                 added += 1
                             } else {
@@ -518,7 +518,7 @@ private fun processFatalBlock(
         for (i in fatalIndex + 2 until blockLines.size) {
             if (added >= 5) break
             val line = blockLines[i].second
-            if (line.contains("AndroidRuntime")) {
+            if (line.contains("AndroidRuntime", ignoreCase = true)) {
                 block.add(line)
                 added += 1
             } else {
@@ -537,7 +537,7 @@ private fun processFatalBlock(
     }
     val (crashLineNumber, crashLine) = blockLines[crashIndex]
     val nextLine = blockLines[crashIndex + 1].second
-    val tagIndex = nextLine.indexOf("CRASH:")
+    val tagIndex = nextLine.indexOf("CRASH:", ignoreCase = true)
     if (tagIndex == -1) {
         return
     }
@@ -554,7 +554,7 @@ private fun processFatalBlock(
     for (i in crashIndex + 2 until blockLines.size) {
         if (added >= 5) break
         val line = blockLines[i].second
-        if (line.contains("CRASH")) {
+        if (line.contains("CRASH", ignoreCase = true)) {
             block.add(line)
             added += 1
         } else {
@@ -603,10 +603,10 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
     val versions = linkedSetOf<VersionEntry>()
     val packageRegex = Regex("Package \\[([^\\]]+)] \\(([0-9A-Za-z]+)\\):")
     val mPackageRegex = Regex("mPackageName='([^']+)'")
-    val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)")
-    val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)")
-    val versionCodeAltRegex = Regex("VersionCode:\\s*([0-9]+)")
-    val versionNameAltRegex = Regex("VersionName:\\s*([0-9.]+)")
+    val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
+    val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
+    val versionCodeAltRegex = Regex("VersionCode:\\s*([0-9]+)", RegexOption.IGNORE_CASE)
+    val versionNameAltRegex = Regex("VersionName:\\s*([0-9.]+)", RegexOption.IGNORE_CASE)
     file.bufferedReader().use { reader ->
         var lineNumber = 0L
         var line = reader.readLine()
@@ -626,9 +626,9 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
                         val next = reader.readLine() ?: break
                         lineNumber += 1
                         lookahead += 1
-                        if (!codePathFound && next.contains("codePath")) {
+                        if (!codePathFound && next.contains("codePath", ignoreCase = true)) {
                             codePathFound = true
-                            if (next.contains("/system/app")) {
+                            if (next.contains("/system/app", ignoreCase = true)) {
                                 systemApp = true
                             }
                         }
@@ -713,10 +713,10 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
     val versions = linkedSetOf<VersionEntry>()
     val packageRegex = Regex("Package \\[([^\\]]+)] \\(([0-9A-Za-z]+)\\):")
     val mPackageRegex = Regex("mPackageName='([^']+)'")
-    val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)")
-    val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)")
-    val versionCodeAltRegex = Regex("VersionCode:\\s*([0-9]+)")
-    val versionNameAltRegex = Regex("VersionName:\\s*([0-9.]+)")
+    val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
+    val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
+    val versionCodeAltRegex = Regex("VersionCode:\\s*([0-9]+)", RegexOption.IGNORE_CASE)
+    val versionNameAltRegex = Regex("VersionName:\\s*([0-9.]+)", RegexOption.IGNORE_CASE)
     val lineRegex = Regex("^(\\d+)[-:](.*)$")
 
     var active = false
@@ -836,9 +836,9 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
                 return@forEach
             }
             remaining -= 1
-            if (!codePathFound && line.contains("codePath")) {
+            if (!codePathFound && line.contains("codePath", ignoreCase = true)) {
                 codePathFound = true
-                if (line.contains("/system/app")) {
+                if (line.contains("/system/app", ignoreCase = true)) {
                     systemApp = true
                 }
             }
