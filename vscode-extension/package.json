@@ -15,6 +15,7 @@
   },
   "categories": ["Other"],
   "activationEvents": [
+    "*",
     "onCommand:wlh.scanFastThenFull",
     "onCommand:wlh.decryptCurrentFile",
     "onCommand:wlh.openSettings",

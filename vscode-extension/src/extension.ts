@@ -396,6 +396,7 @@ async function runWlhCommand(args: string[], label: string) {
 }
 
 export function activate(context: vscode.ExtensionContext) {
+  output.appendLine('WLH extension activated');
   sidebarProvider = new WlhSidebarProvider(
     async (filePath, line) => {
       try {
