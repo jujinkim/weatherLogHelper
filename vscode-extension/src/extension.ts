@@ -11,17 +11,10 @@ type CrashEntry = {
   preview: string;
 };
 
-type TagEntry = {
-  tag: string;
-  count: number;
-  examples: string[];
-};
-
 type ScanResults = {
   filePath: string;
   versions: string[];
   crashes: CrashEntry[];
-  tags: TagEntry[];
 };
 
 type PackageGroup = {
@@ -31,7 +24,6 @@ type PackageGroup = {
 
 type EngineConfig = {
   scanPackages: string[];
-  scanTags: string[];
 };
 
 class WlhSidebarProvider implements vscode.WebviewViewProvider {
@@ -153,8 +145,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     const emptyResults: ScanResults = {
       filePath: this.lastFilePath,
       versions: [],
-      crashes: [],
-      tags: []
+      crashes: []
     };
     this.view.webview.html = this.renderResults(
       emptyResults,
@@ -183,11 +174,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
                 c.preview
               )}</li>`
           )
-          .join('')
-      : '<li>None</li>';
-    const tags = results.tags.length
-      ? results.tags
-          .map((t) => `<li>${escape(t.tag)} (${t.count})</li>`)
           .join('')
       : '<li>None</li>';
     const renderEntries = (entries: CrashEntry[]) =>
@@ -361,8 +347,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             <ul>${versions}</ul>
             <h4>Crashes</h4>
             <ul>${crashes}</ul>
-            <h4>Tags</h4>
-            <ul>${tags}</ul>
             ${packageSections}
           </div>
           <script>
@@ -518,16 +502,15 @@ function readEngineConfig(): EngineConfig {
   try {
     const configPath = resolveEngineConfigPath();
     if (!fs.existsSync(configPath)) {
-      return { scanPackages: [], scanTags: [] };
+      return { scanPackages: [] };
     }
     const raw = fs.readFileSync(configPath, 'utf8');
     const parsed = JSON.parse(raw) as Partial<EngineConfig>;
     return {
-      scanPackages: Array.isArray(parsed.scanPackages) ? parsed.scanPackages : [],
-      scanTags: Array.isArray(parsed.scanTags) ? parsed.scanTags : []
+      scanPackages: Array.isArray(parsed.scanPackages) ? parsed.scanPackages : []
     };
   } catch {
-    return { scanPackages: [], scanTags: [] };
+    return { scanPackages: [] };
   }
 }
 
@@ -537,8 +520,7 @@ function openEngineConfig() {
     const configPath = resolveEngineConfigPath();
     if (!fs.existsSync(configPath)) {
       const template = {
-        scanPackages: [],
-        scanTags: []
+        scanPackages: []
       };
       fs.writeFileSync(configPath, JSON.stringify(template, null, 2));
     }

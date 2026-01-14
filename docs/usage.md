@@ -11,7 +11,6 @@ WLH starts a local daemon per `WLH_HOME` and proxies all commands through it. Th
 - Fetch results:
   - `wlh versions /path/to/log.txt`
   - `wlh crashes /path/to/log.txt`
-  - `wlh tags /path/to/log.txt --limit 50`
 
 ## WLH_HOME
 

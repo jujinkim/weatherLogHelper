@@ -68,7 +68,6 @@ Common commands:
 - `wlh scan --mode fast_then_full /path/to/log.txt`
 - `wlh versions /path/to/log.txt`
 - `wlh crashes /path/to/log.txt`
-- `wlh tags /path/to/log.txt --tag MyTag --limit 50 --offset 0`
 - `wlh decrypt /path/to/log.txt --jar /path/to/dec.jar --timeout 60`
 - `wlh adb devices`
 - `wlh adb run --serial SERIAL -- shell getprop`
@@ -86,7 +85,6 @@ Schema (high level):
   "mode": "full",
   "versions": ["1.0.0"],
   "crashes": [{ "line": 123, "preview": "..." }],
-  "tags": [{ "tag": "MyTag", "count": 42, "examples": ["..."] }],
   "generatedAt": "2024-01-01T00:00:00Z"
 }
 ```

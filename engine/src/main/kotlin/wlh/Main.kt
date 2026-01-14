@@ -33,14 +33,11 @@ enum class ScanMode {
 
 data class CrashEntry(val line: Long, val preview: String)
 
-data class TagEntry(val tag: String, val count: Int, val examples: List<String>)
-
 data class ScanResult(
     val file: String,
     val mode: String,
     val versions: List<String>,
     val crashes: List<CrashEntry>,
-    val tags: List<TagEntry>,
     val generatedAt: String
 )
 
@@ -52,8 +49,7 @@ data class JobStatus(
 )
 
 data class EngineConfig(
-    val scanPackages: List<String>,
-    val scanTags: List<String>
+    val scanPackages: List<String>
 )
 
 private data class Job(
@@ -196,28 +192,6 @@ private fun route(
         method == "GET" && path == "/api/v1/result/crashes" -> {
             sendResult(exchange, mapper, lastResult.get()) { result ->
                 mapOf("status" to "ok", "file" to result.file, "crashes" to result.crashes)
-            }
-        }
-        method == "GET" && path == "/api/v1/result/tags" -> {
-            val query = parseQuery(exchange.requestURI)
-            val tagFilter = query["tag"]
-            val limit = query["limit"]?.toIntOrNull() ?: 100
-            val offset = query["offset"]?.toIntOrNull() ?: 0
-            sendResult(exchange, mapper, lastResult.get()) { result ->
-                val filtered = if (tagFilter.isNullOrBlank()) {
-                    result.tags
-                } else {
-                    result.tags.filter { it.tag == tagFilter }
-                }
-                val slice = filtered.drop(offset).take(limit)
-                mapOf(
-                    "status" to "ok",
-                    "file" to result.file,
-                    "count" to filtered.size,
-                    "offset" to offset,
-                    "limit" to limit,
-                    "tags" to slice
-                )
             }
         }
         method == "POST" && path == "/api/v1/decrypt" -> {
@@ -387,39 +361,19 @@ private fun scanFast(file: File, job: Job, config: EngineConfig): ScanResult {
         mode = "fast",
         versions = versions.toList(),
         crashes = crashes,
-        tags = emptyList(),
         generatedAt = Instant.now().toString()
     )
 }
 
-private data class TagAccum(var count: Int, val examples: MutableList<String>)
-
 private fun scanFull(file: File, job: Job, base: ScanResult?, config: EngineConfig): ScanResult {
-    val tags = mutableMapOf<String, TagAccum>()
     val totalSize = file.length().coerceAtLeast(1L)
     var processedBytes = 0L
     var lineNumber = 0L
-
-    val tagRegex = Regex("^\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d+\\s+\\d+\\s+\\d+\\s+([A-Za-z0-9_.-]+)\\s*:")
-
-    val tagFilters = config.scanTags.toSet()
 
     file.bufferedReader().useLines { lines ->
         lines.forEach { line ->
             lineNumber += 1
             processedBytes += line.length + 1
-
-            val tagMatch = tagRegex.find(line)
-            val tag = tagMatch?.groupValues?.get(1)
-            if (!tag.isNullOrBlank()) {
-                if (tagFilters.isEmpty() || tagFilters.contains(tag)) {
-                    val entry = tags.getOrPut(tag) { TagAccum(0, mutableListOf()) }
-                    entry.count += 1
-                    if (entry.examples.size < 3) {
-                        entry.examples.add(line.take(200))
-                    }
-                }
-            }
 
             if (lineNumber % 2000L == 0L) {
                 job.progress = ((processedBytes.toDouble() / totalSize) * 100).toInt().coerceIn(0, 95)
@@ -427,16 +381,11 @@ private fun scanFull(file: File, job: Job, base: ScanResult?, config: EngineConf
         }
     }
 
-    val tagEntries = tags.map { (tag, entry) ->
-        TagEntry(tag, entry.count, entry.examples)
-    }.sortedByDescending { it.count }
-
     return ScanResult(
         file = file.absolutePath,
         mode = "full",
         versions = base?.versions ?: emptyList(),
         crashes = base?.crashes ?: emptyList(),
-        tags = tagEntries,
         generatedAt = Instant.now().toString()
     )
 }
@@ -554,7 +503,7 @@ private class EngineHome(private val home: Path) {
     }
 
     fun cacheKeyFor(file: File, config: EngineConfig): String {
-        val configKey = config.scanPackages.joinToString(",") + "|" + config.scanTags.joinToString(",")
+        val configKey = config.scanPackages.joinToString(",")
         val key = "${file.absolutePath}:${file.length()}:${file.lastModified()}:${configKey}"
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(key.toByteArray(StandardCharsets.UTF_8))
@@ -581,18 +530,16 @@ private class EngineHome(private val home: Path) {
 
     fun readConfig(mapper: ObjectMapper): EngineConfig {
         if (!Files.exists(configFile)) {
-            return EngineConfig(emptyList(), emptyList())
+            return EngineConfig(emptyList())
         }
         return try {
             val node = mapper.readTree(configFile.toFile())
             val packages = node.path("scanPackages").takeIf { it.isArray }?.map { it.asText() } ?: emptyList()
-            val tags = node.path("scanTags").takeIf { it.isArray }?.map { it.asText() } ?: emptyList()
             EngineConfig(
-                packages.filter { it.isNotBlank() },
-                tags.filter { it.isNotBlank() }
+                packages.filter { it.isNotBlank() }
             )
         } catch (ex: Exception) {
-            EngineConfig(emptyList(), emptyList())
+            EngineConfig(emptyList())
         }
     }
 }
