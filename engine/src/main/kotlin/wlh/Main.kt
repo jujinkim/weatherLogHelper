@@ -35,21 +35,12 @@ data class CrashEntry(val line: Long, val preview: String)
 
 data class TagEntry(val tag: String, val count: Int, val examples: List<String>)
 
-data class JsonBlockEntry(
-    val id: Int,
-    val startLine: Long,
-    val endLine: Long,
-    val preview: String,
-    val content: String
-)
-
 data class ScanResult(
     val file: String,
     val mode: String,
     val versions: List<String>,
     val crashes: List<CrashEntry>,
     val tags: List<TagEntry>,
-    val jsonBlocks: List<JsonBlockEntry>,
     val generatedAt: String
 )
 
@@ -62,8 +53,7 @@ data class JobStatus(
 
 data class EngineConfig(
     val scanPackages: List<String>,
-    val scanTags: List<String>,
-    val scanJsonBlocks: Boolean
+    val scanTags: List<String>
 )
 
 private data class Job(
@@ -227,28 +217,6 @@ private fun route(
                     "offset" to offset,
                     "limit" to limit,
                     "tags" to slice
-                )
-            }
-        }
-        method == "GET" && path == "/api/v1/result/jsonBlocks" -> {
-            val query = parseQuery(exchange.requestURI)
-            val id = query["id"]?.toIntOrNull()
-            val limit = query["limit"]?.toIntOrNull() ?: 100
-            val offset = query["offset"]?.toIntOrNull() ?: 0
-            sendResult(exchange, mapper, lastResult.get()) { result ->
-                val filtered = if (id == null) {
-                    result.jsonBlocks
-                } else {
-                    result.jsonBlocks.filter { it.id == id }
-                }
-                val slice = filtered.drop(offset).take(limit)
-                mapOf(
-                    "status" to "ok",
-                    "file" to result.file,
-                    "count" to filtered.size,
-                    "offset" to offset,
-                    "limit" to limit,
-                    "jsonBlocks" to slice
                 )
             }
         }
@@ -420,7 +388,6 @@ private fun scanFast(file: File, job: Job, config: EngineConfig): ScanResult {
         versions = versions.toList(),
         crashes = crashes,
         tags = emptyList(),
-        jsonBlocks = emptyList(),
         generatedAt = Instant.now().toString()
     )
 }
@@ -429,36 +396,13 @@ private data class TagAccum(var count: Int, val examples: MutableList<String>)
 
 private fun scanFull(file: File, job: Job, base: ScanResult?, config: EngineConfig): ScanResult {
     val tags = mutableMapOf<String, TagAccum>()
-    val jsonBlocks = mutableListOf<JsonBlockEntry>()
     val totalSize = file.length().coerceAtLeast(1L)
     var processedBytes = 0L
     var lineNumber = 0L
 
     val tagRegex = Regex("^\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d+\\s+\\d+\\s+\\d+\\s+([A-Za-z0-9_.-]+)\\s*:")
 
-    var inBlock = false
-    var braceCount = 0
-    var inString = false
-    var escape = false
-    var blockStartLine = 0L
-    var blockBuilder = StringBuilder()
-    var blockPreview = ""
-    var blockId = 0
-    val maxBlockChars = 20000
-        val tagFilters = config.scanTags.toSet()
-        val packageFilters = config.scanPackages.map { it.lowercase(Locale.ROOT) }
-        val enableJsonBlocks = config.scanJsonBlocks
-
-    fun appendBlockLine(line: String) {
-        if (blockBuilder.length < maxBlockChars) {
-            val toAppend = if (blockBuilder.length + line.length + 1 > maxBlockChars) {
-                line.take(maxBlockChars - blockBuilder.length)
-            } else {
-                line
-            }
-            blockBuilder.append(toAppend).append('\n')
-        }
-    }
+    val tagFilters = config.scanTags.toSet()
 
     file.bufferedReader().useLines { lines ->
         lines.forEach { line ->
@@ -473,63 +417,6 @@ private fun scanFull(file: File, job: Job, base: ScanResult?, config: EngineConf
                     entry.count += 1
                     if (entry.examples.size < 3) {
                         entry.examples.add(line.take(200))
-                    }
-                }
-            }
-
-            if (enableJsonBlocks) {
-                if (!inBlock) {
-                    val idx = line.indexOf('{')
-                    if (idx != -1) {
-                        inBlock = true
-                        blockStartLine = lineNumber
-                        blockBuilder = StringBuilder()
-                        blockPreview = line.take(200)
-                        braceCount = 0
-                        inString = false
-                        escape = false
-                    }
-                }
-
-                if (inBlock) {
-                    appendBlockLine(line)
-                    for (ch in line) {
-                        if (escape) {
-                            escape = false
-                            continue
-                        }
-                        if (ch == '\\') {
-                            escape = true
-                            continue
-                        }
-                        if (ch == '"') {
-                            inString = !inString
-                        }
-                        if (!inString) {
-                            if (ch == '{') braceCount += 1
-                            if (ch == '}') braceCount -= 1
-                        }
-                    }
-                    if (braceCount == 0) {
-                        inBlock = false
-                        blockId += 1
-                        val content = if (blockBuilder.length >= maxBlockChars) {
-                            blockBuilder.toString() + "..."
-                        } else {
-                            blockBuilder.toString()
-                        }
-                        val haystack = (blockPreview + "\n" + content).lowercase(Locale.ROOT)
-                        if (packageFilters.isEmpty() || packageFilters.any { haystack.contains(it) }) {
-                            jsonBlocks.add(
-                                JsonBlockEntry(
-                                    id = blockId,
-                                    startLine = blockStartLine,
-                                    endLine = lineNumber,
-                                    preview = blockPreview,
-                                    content = content
-                                )
-                            )
-                        }
                     }
                 }
             }
@@ -550,7 +437,6 @@ private fun scanFull(file: File, job: Job, base: ScanResult?, config: EngineConf
         versions = base?.versions ?: emptyList(),
         crashes = base?.crashes ?: emptyList(),
         tags = tagEntries,
-        jsonBlocks = jsonBlocks,
         generatedAt = Instant.now().toString()
     )
 }
@@ -695,20 +581,18 @@ private class EngineHome(private val home: Path) {
 
     fun readConfig(mapper: ObjectMapper): EngineConfig {
         if (!Files.exists(configFile)) {
-            return EngineConfig(emptyList(), emptyList(), true)
+            return EngineConfig(emptyList(), emptyList())
         }
         return try {
             val node = mapper.readTree(configFile.toFile())
             val packages = node.path("scanPackages").takeIf { it.isArray }?.map { it.asText() } ?: emptyList()
             val tags = node.path("scanTags").takeIf { it.isArray }?.map { it.asText() } ?: emptyList()
-            val jsonBlocks = node.path("scanJsonBlocks").asBoolean(true)
             EngineConfig(
                 packages.filter { it.isNotBlank() },
-                tags.filter { it.isNotBlank() },
-                jsonBlocks
+                tags.filter { it.isNotBlank() }
             )
         } catch (ex: Exception) {
-            EngineConfig(emptyList(), emptyList(), true)
+            EngineConfig(emptyList(), emptyList())
         }
     }
 }

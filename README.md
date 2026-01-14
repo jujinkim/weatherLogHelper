@@ -69,7 +69,6 @@ Common commands:
 - `wlh versions /path/to/log.txt`
 - `wlh crashes /path/to/log.txt`
 - `wlh tags /path/to/log.txt --tag MyTag --limit 50 --offset 0`
-- `wlh json-blocks /path/to/log.txt --limit 20`
 - `wlh decrypt /path/to/log.txt --jar /path/to/dec.jar --timeout 60`
 - `wlh adb devices`
 - `wlh adb run --serial SERIAL -- shell getprop`
@@ -88,7 +87,6 @@ Schema (high level):
   "versions": ["1.0.0"],
   "crashes": [{ "line": 123, "preview": "..." }],
   "tags": [{ "tag": "MyTag", "count": 42, "examples": ["..."] }],
-  "jsonBlocks": [{ "id": 1, "startLine": 200, "endLine": 230, "preview": "{...}", "content": "{...}" }],
   "generatedAt": "2024-01-01T00:00:00Z"
 }
 ```

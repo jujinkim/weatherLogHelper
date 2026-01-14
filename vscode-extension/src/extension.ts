@@ -17,26 +17,16 @@ type TagEntry = {
   examples: string[];
 };
 
-type JsonBlockEntry = {
-  id: number;
-  startLine: number;
-  endLine: number;
-  preview: string;
-  content: string;
-};
-
 type ScanResults = {
   filePath: string;
   versions: string[];
   crashes: CrashEntry[];
   tags: TagEntry[];
-  jsonBlocks: JsonBlockEntry[];
 };
 
 type PackageGroup = {
   name: string;
   crashes: CrashEntry[];
-  jsonBlocks: JsonBlockEntry[];
 };
 
 type EngineConfig = {
@@ -164,8 +154,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       filePath: this.lastFilePath,
       versions: [],
       crashes: [],
-      tags: [],
-      jsonBlocks: []
+      tags: []
     };
     this.view.webview.html = this.renderResults(
       emptyResults,
@@ -201,31 +190,12 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
           .map((t) => `<li>${escape(t.tag)} (${t.count})</li>`)
           .join('')
       : '<li>None</li>';
-    const blocks = results.jsonBlocks.length
-      ? results.jsonBlocks
-          .map(
-            (b) =>
-              `<li><button class="jump" data-line="${b.startLine}">L${b.startLine}</button> ${escape(
-                b.preview
-              )}</li>`
-          )
-          .join('')
-      : '<li>None</li>';
-
-    const renderEntries = (entries: Array<CrashEntry | JsonBlockEntry>, lineKey: 'line' | 'startLine') =>
+    const renderEntries = (entries: CrashEntry[]) =>
       entries.length
         ? entries
             .map((entry) => {
-              const line =
-                lineKey === 'line'
-                  ? (entry as CrashEntry).line
-                  : (entry as JsonBlockEntry).startLine;
-              const preview =
-                lineKey === 'line'
-                  ? (entry as CrashEntry).preview
-                  : (entry as JsonBlockEntry).preview;
-              return `<li><button class="jump" data-line="${line}">L${line}</button> ${escape(
-                preview
+              return `<li><button class="jump" data-line="${entry.line}">L${entry.line}</button> ${escape(
+                entry.preview
               )}</li>`;
             })
             .join('')
@@ -243,11 +213,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
                   <h4>Package: ${escape(group.name)}</h4>
                   <div class="subsection">
                     <h4>Crashes</h4>
-                    <ul>${renderEntries(group.crashes, 'line')}</ul>
-                  </div>
-                  <div class="subsection">
-                    <h4>JSON Blocks</h4>
-                    <ul>${renderEntries(group.jsonBlocks, 'startLine')}</ul>
+                    <ul>${renderEntries(group.crashes)}</ul>
                   </div>
                 </div>
               `;
@@ -397,8 +363,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             <ul>${crashes}</ul>
             <h4>Tags</h4>
             <ul>${tags}</ul>
-            <h4>JSON Blocks</h4>
-            <ul>${blocks}</ul>
             ${packageSections}
           </div>
           <script>
@@ -560,11 +524,10 @@ function readEngineConfig(): EngineConfig {
     const parsed = JSON.parse(raw) as Partial<EngineConfig>;
     return {
       scanPackages: Array.isArray(parsed.scanPackages) ? parsed.scanPackages : [],
-      scanTags: Array.isArray(parsed.scanTags) ? parsed.scanTags : [],
-      scanJsonBlocks: parsed.scanJsonBlocks !== false
+      scanTags: Array.isArray(parsed.scanTags) ? parsed.scanTags : []
     };
   } catch {
-    return { scanPackages: [], scanTags: [], scanJsonBlocks: true };
+    return { scanPackages: [], scanTags: [] };
   }
 }
 
@@ -575,8 +538,7 @@ function openEngineConfig() {
     if (!fs.existsSync(configPath)) {
       const template = {
         scanPackages: [],
-        scanTags: [],
-        scanJsonBlocks: false
+        scanTags: []
       };
       fs.writeFileSync(configPath, JSON.stringify(template, null, 2));
     }
@@ -599,8 +561,7 @@ function buildPackageGroups(results: ScanResults, packages: string[]): PackageGr
   }
   const groups = packages.map((name) => ({
     name,
-    crashes: [] as CrashEntry[],
-    jsonBlocks: [] as JsonBlockEntry[]
+    crashes: [] as CrashEntry[]
   }));
 
   const matchesPackage = (text: string, packageName: string) =>
@@ -610,15 +571,6 @@ function buildPackageGroups(results: ScanResults, packages: string[]): PackageGr
     groups.forEach((group) => {
       if (matchesPackage(crash.preview, group.name)) {
         group.crashes.push(crash);
-      }
-    });
-  });
-
-  results.jsonBlocks.forEach((block) => {
-    const haystack = `${block.preview}\n${block.content}`;
-    groups.forEach((group) => {
-      if (matchesPackage(haystack, group.name)) {
-        group.jsonBlocks.push(block);
       }
     });
   });

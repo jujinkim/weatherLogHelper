@@ -336,25 +336,6 @@ switch ($Command) {
     if ($offset) { $query += "&offset=$offset" }
     Proxy-Result $Home "tags" $query
   }
-  "json-blocks" {
-    $file = ""; $id = ""; $limit = ""; $offset = ""
-    for ($i=0; $i -lt $ArgsList.Count; $i++) {
-      switch ($ArgsList[$i]) {
-        "--id" { $id = $ArgsList[$i+1]; $i++ }
-        "--limit" { $limit = $ArgsList[$i+1]; $i++ }
-        "--offset" { $offset = $ArgsList[$i+1]; $i++ }
-        default { $file = $ArgsList[$i] }
-      }
-    }
-    if (-not $file) { Write-ErrorJson "missing_file"; exit 1 }
-    $scan = Proxy-Scan $Home $file "full" | ConvertFrom-Json
-    if (-not (Wait-Job $Home $scan.jobId)) { Write-ErrorJson "scan_failed"; exit 1 }
-    $query = "?"
-    if ($id) { $query += "id=$id" }
-    if ($limit) { $query += "&limit=$limit" }
-    if ($offset) { $query += "&offset=$offset" }
-    Proxy-Result $Home "jsonBlocks" $query
-  }
   "decrypt" {
     $file = ""; $jar = ""; $timeout = 30
     for ($i=0; $i -lt $ArgsList.Count; $i++) {

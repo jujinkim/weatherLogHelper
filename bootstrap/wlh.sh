@@ -654,54 +654,6 @@ PY
     [ -n "$offset" ] && query="${query}&offset=$offset"
     proxy_results "tags" "$query"
     ;;
-  json-blocks)
-    file=""
-    block_id=""
-    limit=""
-    offset=""
-    i=0
-    while [ $i -lt ${#REMAINING[@]} ]; do
-      case "${REMAINING[$i]}" in
-        --id)
-          block_id="${REMAINING[$((i + 1))]:-}"
-          i=$((i + 2))
-          ;;
-        --limit)
-          limit="${REMAINING[$((i + 1))]:-}"
-          i=$((i + 2))
-          ;;
-        --offset)
-          offset="${REMAINING[$((i + 1))]:-}"
-          i=$((i + 2))
-          ;;
-        *)
-          file="${REMAINING[$i]}"
-          i=$((i + 1))
-          ;;
-      esac
-    done
-    if [ -z "$file" ]; then
-      json_error "missing_file"
-      exit 1
-    fi
-    scan_json=$(proxy_scan "full" "$file")
-    job_id=$(extract_job_id "$scan_json")
-    if [ -z "$job_id" ]; then
-      printf '%s\n' "$scan_json"
-      exit 1
-    fi
-    readarray -t vals < <(parse_daemon_json "$WLH_HOME/daemon/daemon.json" || true)
-    port="${vals[0]:-}"
-    if ! wait_job "$port" "$job_id"; then
-      json_error "scan_failed"
-      exit 1
-    fi
-    query="?"
-    [ -n "$block_id" ] && query="${query}id=$block_id"
-    [ -n "$limit" ] && query="${query}&limit=$limit"
-    [ -n "$offset" ] && query="${query}&offset=$offset"
-    proxy_results "jsonBlocks" "$query"
-    ;;
   decrypt)
     file=""
     jar=""
