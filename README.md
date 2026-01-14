@@ -53,6 +53,12 @@ Optional internal packaging uses `vsce` from within `vscode-extension/`:
 
 No build step. Use the scripts directly from `ue18-scripts/`.
 Set `wlhPath` and `decryptJar` in `wlh.config.json` (see `ue18-scripts/config.template.json`).
+Available scripts:
+- `scan.js` (scan + open `.wlhview.txt` summary)
+- `view_results.js` (open summary from existing `.wlhresult`)
+- `decrypt.js` (decrypt + open output file)
+- `jump.js` (jump to a line selected from `.wlhview.txt`)
+- `open_config.js` (open `wlh.config.json`)
 
 ## Install (internal)
 

@@ -10,6 +10,16 @@ WLH starts a local daemon per `WLH_HOME` and proxies all commands through it. Th
   - `wlh versions /path/to/log.txt`
   - `wlh crashes /path/to/log.txt`
 
+## UltraEdit 18 scripts
+
+Place `wlh.config.json` next to the log file (see `ue18-scripts/config.template.json`), then:
+
+- `scan.js`: run scan and open `<log>.wlhview.txt` summary.
+- `view_results.js`: open summary from existing `.wlhresult`.
+- `decrypt.js`: decrypt current file and open output.
+- `jump.js`: in the `.wlhview.txt` file, select a line like `L123` and run to jump.
+- `open_config.js`: open `wlh.config.json`.
+
 ## Scan Rules (current)
 
 - Versions:

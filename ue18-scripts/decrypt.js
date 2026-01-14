@@ -19,5 +19,13 @@ if (!fso.FileExists(configPath)) {
     var exec = shell.Exec(cmd);
     var output = exec.StdOut.ReadAll();
     UltraEdit.outputWindow.write(output);
+    try {
+      var result = eval('(' + output + ')');
+      if (result.status === "ok" && result.output) {
+        UltraEdit.open(result.output);
+      }
+    } catch (err) {
+      UltraEdit.outputWindow.write("Failed to parse decrypt output\n");
+    }
   }
 }
