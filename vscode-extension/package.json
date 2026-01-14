@@ -4,6 +4,12 @@
   "description": "Internal WLH client",
   "version": "0.0.1",
   "publisher": "internal",
+  "author": "jujin.kim",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jujinkim/weatherLogHelper.git"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
