@@ -44,9 +44,22 @@ json_get_field() {
 import json
 import sys
 data = sys.stdin.read()
-obj = json.loads(data) if data else {}
+try:
+    obj = json.loads(data) if data else {}
+except Exception:
+    obj = {}
 print(obj.get(sys.argv[1], ""))
 PY
+}
+
+extract_job_id() {
+  local json="$1"
+  local job_id=""
+  job_id=$(printf '%s' "$json" | json_get_field jobId)
+  if [ -z "$job_id" ]; then
+    job_id=$(printf '%s' "$json" | sed -n 's/.*"jobId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+  fi
+  printf '%s' "$job_id"
 }
 
 resolve_java() {
@@ -556,7 +569,7 @@ case "$COMMAND" in
       exit 1
     fi
     scan_json=$(proxy_scan "fast" "$file")
-    job_id=$(printf '%s' "$scan_json" | json_get_field jobId)
+    job_id=$(extract_job_id "$scan_json")
     if [ -z "$job_id" ]; then
       printf '%s\n' "$scan_json"
       exit 1
@@ -576,7 +589,7 @@ case "$COMMAND" in
       exit 1
     fi
     scan_json=$(proxy_scan "fast" "$file")
-    job_id=$(printf '%s' "$scan_json" | json_get_field jobId)
+    job_id=$(extract_job_id "$scan_json")
     if [ -z "$job_id" ]; then
       printf '%s\n' "$scan_json"
       exit 1
@@ -620,7 +633,7 @@ case "$COMMAND" in
       exit 1
     fi
     scan_json=$(proxy_scan "full" "$file")
-    job_id=$(printf '%s' "$scan_json" | json_get_field jobId)
+    job_id=$(extract_job_id "$scan_json")
     if [ -z "$job_id" ]; then
       printf '%s\n' "$scan_json"
       exit 1
@@ -672,7 +685,7 @@ PY
       exit 1
     fi
     scan_json=$(proxy_scan "full" "$file")
-    job_id=$(printf '%s' "$scan_json" | json_get_field jobId)
+    job_id=$(extract_job_id "$scan_json")
     if [ -z "$job_id" ]; then
       printf '%s\n' "$scan_json"
       exit 1
