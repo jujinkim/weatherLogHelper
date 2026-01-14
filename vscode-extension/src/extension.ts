@@ -240,6 +240,29 @@ async function scanFastThenFull(filePath: string) {
   }
 }
 
+async function decryptFile(filePath: string) {
+  const config = vscode.workspace.getConfiguration('wlh');
+  const jarPath = config.get<string>('decrypt.jarPath') || '';
+  if (!jarPath.trim()) {
+    vscode.window.showErrorMessage('WLH: Set wlh.decrypt.jarPath before decrypt.');
+    return;
+  }
+  try {
+    sidebarProvider?.update('Decrypting...');
+    const result = await runWlhJson<Record<string, unknown>>([
+      'decrypt',
+      filePath,
+      '--jar',
+      jarPath
+    ]);
+    sidebarProvider?.update(JSON.stringify(result));
+  } catch (err) {
+    const message = (err as Error).message;
+    vscode.window.showErrorMessage(`WLH: Decrypt failed: ${message}`);
+    sidebarProvider?.update(`Error: ${message}`);
+  }
+}
+
 function resolveActiveFilePath(): string | undefined {
   const editor = vscode.window.activeTextEditor;
   if (editor) {
@@ -282,26 +305,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
     },
     async (filePath) => {
-      const config = vscode.workspace.getConfiguration('wlh');
-      const jarPath = config.get<string>('decrypt.jarPath') || '';
-      if (!jarPath.trim()) {
-        vscode.window.showErrorMessage('WLH: Set wlh.decrypt.jarPath before decrypt.');
-        return;
-      }
-      try {
-        sidebarProvider?.update('Decrypting...');
-        const result = await runWlhJson<Record<string, unknown>>([
-          'decrypt',
-          filePath,
-          '--jar',
-          jarPath
-        ]);
-        sidebarProvider?.update(JSON.stringify(result));
-      } catch (err) {
-        const message = (err as Error).message;
-        vscode.window.showErrorMessage(`WLH: Decrypt failed: ${message}`);
-        sidebarProvider?.update(`Error: ${message}`);
-      }
+      await decryptFile(filePath);
     }
   );
   context.subscriptions.push(
@@ -325,6 +329,17 @@ export function activate(context: vscode.ExtensionContext) {
     }
     await scanFastThenFull(filePath);
   });
+  const decryptCommand = vscode.commands.registerCommand('wlh.decryptCurrentFile', async () => {
+    const filePath = resolveActiveFilePath();
+    if (!filePath) {
+      vscode.window.showInformationMessage('WLH: No active file');
+      return;
+    }
+    await decryptFile(filePath);
+  });
+  const openSettingsCommand = vscode.commands.registerCommand('wlh.openSettings', async () => {
+    await vscode.commands.executeCommand('workbench.action.openSettings', 'wlh');
+  });
 
   const openListener = vscode.workspace.onDidOpenTextDocument(async (doc) => {
     if (doc.isUntitled) {
@@ -336,7 +351,13 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(scanCommand, openListener, output);
+  context.subscriptions.push(
+    scanCommand,
+    decryptCommand,
+    openSettingsCommand,
+    openListener,
+    output
+  );
 }
 
 export function deactivate() {

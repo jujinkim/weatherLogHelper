@@ -25,6 +25,14 @@
       {
         "command": "wlh.scanFastThenFull",
         "title": "WLH: Scan (Fast then Full)"
+      },
+      {
+        "command": "wlh.decryptCurrentFile",
+        "title": "WLH: Decrypt Current File"
+      },
+      {
+        "command": "wlh.openSettings",
+        "title": "WLH: Open Settings"
       }
     ],
     "views": {
