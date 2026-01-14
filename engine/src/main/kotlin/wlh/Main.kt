@@ -344,6 +344,7 @@ private fun runScan(
             job.status = "completed"
             job.progress = 100
             lastResult.set(cached)
+            engineHome.writeResultFile(file, cached, mapper)
             return
         }
 
@@ -352,11 +353,13 @@ private fun runScan(
                 val result = scanFast(file, job, config)
                 engineHome.saveCache(cacheKey, job.mode, result, mapper)
                 lastResult.set(result)
+                engineHome.writeResultFile(file, result, mapper)
             }
             ScanMode.FULL -> {
                 val result = scanFull(file, job, null, config)
                 engineHome.saveCache(cacheKey, job.mode, result, mapper)
                 lastResult.set(result)
+                engineHome.writeResultFile(file, result, mapper)
             }
             ScanMode.FAST_THEN_FULL -> {
                 val fastCache = engineHome.loadCache(cacheKey, ScanMode.FAST, mapper)
@@ -366,6 +369,7 @@ private fun runScan(
                 val finalResult = fullCache ?: scanFull(file, job, fastResult, config)
                 engineHome.saveCache(cacheKey, ScanMode.FULL, finalResult, mapper)
                 lastResult.set(finalResult)
+                engineHome.writeResultFile(file, finalResult, mapper)
             }
         }
         job.status = "completed"
@@ -676,6 +680,13 @@ private class EngineHome(private val home: Path) {
     fun saveCache(key: String, mode: ScanMode, result: ScanResult, mapper: ObjectMapper) {
         val path = cacheDir.resolve("$key-${mode.name.lowercase(Locale.ROOT)}.json")
         mapper.writeValue(path.toFile(), result)
+    }
+
+    fun writeResultFile(file: File, result: ScanResult, mapper: ObjectMapper) {
+        val resultPath = Path.of(file.absolutePath + ".wlhresult")
+        val tempPath = Path.of(resultPath.toString() + ".tmp")
+        mapper.writeValue(tempPath.toFile(), result)
+        Files.move(tempPath, resultPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
 
     fun readConfig(mapper: ObjectMapper): EngineConfig {

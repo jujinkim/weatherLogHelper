@@ -39,11 +39,6 @@ type PackageGroup = {
   jsonBlocks: JsonBlockEntry[];
 };
 
-type TagGroup = {
-  name: string;
-  entries: TagEntry[];
-};
-
 type EngineConfig = {
   scanPackages: string[];
   scanTags: string[];
@@ -56,8 +51,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private lastFilePath = 'No file selected';
   private currentResults: ScanResults | undefined;
   private packageGroups: PackageGroup[] = [];
-  private unmatchedGroup: PackageGroup | undefined;
-  private tagGroups: TagGroup[] = [];
+  private scanPackages: string[] = [];
 
   constructor(
     private readonly onJump: (filePath: string, line: number) => void,
@@ -143,17 +137,11 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     this.render();
   }
 
-  updateResults(
-    results: ScanResults,
-    groups: PackageGroup[] = [],
-    unmatched?: PackageGroup,
-    tagGroups: TagGroup[] = []
-  ) {
+  updateResults(results: ScanResults, groups: PackageGroup[] = [], scanPackages: string[] = []) {
     this.currentResults = results;
     this.lastFilePath = results.filePath;
     this.packageGroups = groups;
-    this.unmatchedGroup = unmatched;
-    this.tagGroups = tagGroups;
+    this.scanPackages = scanPackages;
     this.lastContent = '';
     this.render();
   }
@@ -167,8 +155,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
         this.currentResults,
         undefined,
         this.packageGroups,
-        this.unmatchedGroup,
-        this.tagGroups
+        this.scanPackages
       );
       return;
     }
@@ -184,8 +171,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       emptyResults,
       this.lastContent,
       this.packageGroups,
-      this.unmatchedGroup,
-      this.tagGroups
+      this.scanPackages
     );
   }
 
@@ -193,8 +179,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     results: ScanResults,
     message?: string,
     packageGroups: PackageGroup[] = [],
-    unmatched?: PackageGroup,
-    tagGroups: TagGroup[] = []
+    scanPackages: string[] = []
   ): string {
     const escape = (value: string) =>
       value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -269,38 +254,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             })
             .join('')
         : '';
-
-    const tagSections =
-      tagGroups.length > 0
-        ? tagGroups
-            .map(
-              (group) => `
-                <div class="section">
-                  <h4>Tag: ${escape(group.name)}</h4>
-                  <ul>${group.entries
-                    .map((entry) => `<li>${escape(entry.tag)} (${entry.count})</li>`)
-                    .join('')}</ul>
-                </div>
-              `
-            )
-            .join('')
-        : '';
-
-    const unmatchedSection = unmatched
-      ? `
-          <div class="section" data-package="unmatched">
-            <h4>Package: ${escape(unmatched.name)}</h4>
-            <div class="subsection">
-              <h4>Crashes</h4>
-              <ul>${renderEntries(unmatched.crashes, 'line')}</ul>
-            </div>
-            <div class="subsection">
-              <h4>JSON Blocks</h4>
-              <ul>${renderEntries(unmatched.jsonBlocks, 'startLine')}</ul>
-            </div>
-          </div>
-        `
-      : '';
 
     const messageSection = message
       ? `<h4>Message</h4><div class="message">${escape(message)}</div>`
@@ -432,11 +385,11 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             ${messageSection}
             <div class="section">
               <h4>Package Filter</h4>
-              <select id="packageSelect">
-                <option value="all">All</option>
-                ${packageOptions.join('')}
-                ${unmatched ? '<option value="unmatched">Unmatched</option>' : ''}
-              </select>
+              ${scanPackages.length === 0 ? '<div class="message">No packages configured.</div>' : `
+                <select id="packageSelect">
+                  ${packageOptions.join('')}
+                </select>
+              `}
             </div>
             <h4>Versions</h4>
             <ul>${versions}</ul>
@@ -447,8 +400,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             <h4>JSON Blocks</h4>
             <ul>${blocks}</ul>
             ${packageSections}
-            ${unmatchedSection}
-            ${tagSections}
           </div>
           <script>
             const vscode = acquireVsCodeApi();
@@ -484,16 +435,14 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             });
             const packageSelect = document.getElementById('packageSelect');
             if (packageSelect) {
-              packageSelect.addEventListener('change', () => {
+              const applyFilter = () => {
                 const value = packageSelect.value;
                 document.querySelectorAll('[data-package]').forEach((section) => {
-                  if (value === 'all') {
-                    section.style.display = '';
-                  } else {
-                    section.style.display = section.getAttribute('data-package') === value ? '' : 'none';
-                  }
+                  section.style.display = section.getAttribute('data-package') === value ? '' : 'none';
                 });
-              });
+              };
+              applyFilter();
+              packageSelect.addEventListener('change', applyFilter);
             }
             document.querySelectorAll('button[data-line]').forEach((button) => {
               button.addEventListener('click', () => {
@@ -638,72 +587,56 @@ function openEngineConfig() {
   }
 }
 
-function parsePackageList(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
+function buildResultFilePath(filePath: string): string {
+  return `${filePath}.wlhresult`;
 }
 
-function buildTagGroups(results: ScanResults, tags: string[]): TagGroup[] {
-  if (tags.length === 0) {
-    return [];
-  }
-  const wanted = tags.map((tag) => tag.toLowerCase());
-  return results.tags
-    .filter((entry) => wanted.includes(entry.tag.toLowerCase()))
-    .map((entry) => ({ name: entry.tag, entries: [entry] }));
-}
-
-function buildPackageGroups(results: ScanResults, packages: string[]): {
-  groups: PackageGroup[];
-  unmatched?: PackageGroup;
-} {
+function buildPackageGroups(results: ScanResults, packages: string[]): PackageGroup[] {
   if (packages.length === 0) {
-    return { groups: [] };
+    return [];
   }
   const groups = packages.map((name) => ({
     name,
     crashes: [] as CrashEntry[],
     jsonBlocks: [] as JsonBlockEntry[]
   }));
-  const unmatched: PackageGroup = {
-    name: 'Unmatched',
-    crashes: [],
-    jsonBlocks: []
-  };
 
   const matchesPackage = (text: string, packageName: string) =>
     text.toLowerCase().includes(packageName.toLowerCase());
 
   results.crashes.forEach((crash) => {
-    let matched = false;
     groups.forEach((group) => {
       if (matchesPackage(crash.preview, group.name)) {
         group.crashes.push(crash);
-        matched = true;
       }
     });
-    if (!matched) {
-      unmatched.crashes.push(crash);
-    }
   });
 
   results.jsonBlocks.forEach((block) => {
-    let matched = false;
     const haystack = `${block.preview}\n${block.content}`;
     groups.forEach((group) => {
       if (matchesPackage(haystack, group.name)) {
         group.jsonBlocks.push(block);
-        matched = true;
       }
     });
-    if (!matched) {
-      unmatched.jsonBlocks.push(block);
-    }
   });
 
-  return { groups, unmatched };
+  return groups;
+}
+
+async function waitForResultFile(filePath: string, timeoutMs: number): Promise<string> {
+  const target = buildResultFilePath(filePath);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(target)) {
+      const content = fs.readFileSync(target, 'utf8');
+      if (content.trim().length > 0) {
+        return content;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  throw new Error('result_file_timeout');
 }
 
 async function scanFastThenFull(filePath: string) {
@@ -711,6 +644,13 @@ async function scanFastThenFull(filePath: string) {
   sidebarProvider?.update('Scanning...');
   sidebarProvider?.updateStatus('Scanning...');
   sidebarProvider?.updateFilePath(filePath);
+  const engineConfig = readEngineConfig();
+  if (engineConfig.scanPackages.length === 0) {
+    sidebarProvider?.update('No packages configured.');
+    sidebarProvider?.updateStatus('Error');
+    vscode.window.showErrorMessage('WLH: Configure scanPackages in engine config.');
+    return;
+  }
   try {
     const scanResult = await runWlhJson<{ status: string; jobId?: string }>([
       'scan',
@@ -723,40 +663,10 @@ async function scanFastThenFull(filePath: string) {
       return;
     }
 
-    const versions = await runWlhJson<{ status: string; versions?: string[] }>([
-      'versions',
-      filePath
-    ]);
-    const crashes = await runWlhJson<{ status: string; crashes?: CrashEntry[] }>([
-      'crashes',
-      filePath
-    ]);
-    const tags = await runWlhJson<{ status: string; tags?: TagEntry[] }>([
-      'tags',
-      filePath,
-      '--limit',
-      '100'
-    ]);
-    const jsonBlocks = await runWlhJson<{ status: string; jsonBlocks?: JsonBlockEntry[] }>([
-      'json-blocks',
-      filePath,
-      '--limit',
-      '50'
-    ]);
-
-    const results: ScanResults = {
-      filePath,
-      versions: versions.versions || [],
-      crashes: crashes.crashes || [],
-      tags: tags.tags || [],
-      jsonBlocks: jsonBlocks.jsonBlocks || []
-    };
-    const engineConfig = readEngineConfig();
-    const packageList = engineConfig.scanPackages;
-    const tagList = engineConfig.scanTags;
-    const grouped = buildPackageGroups(results, packageList);
-    const tagGroups = buildTagGroups(results, tagList);
-    sidebarProvider?.updateResults(results, grouped.groups, grouped.unmatched, tagGroups);
+    const raw = await waitForResultFile(filePath, 120_000);
+    const results = JSON.parse(raw) as ScanResults;
+    const grouped = buildPackageGroups(results, engineConfig.scanPackages);
+    sidebarProvider?.updateResults(results, grouped, engineConfig.scanPackages);
     sidebarProvider?.updateStatus('Scan complete');
     output.appendLine(`Scan complete: ${filePath}`);
   } catch (err) {
@@ -984,6 +894,12 @@ export function activate(context: vscode.ExtensionContext) {
       await scanFastThenFull(doc.fileName);
     }
   });
+  const activeListener = vscode.window.onDidChangeActiveTextEditor((editor) => {
+    if (!editor) {
+      return;
+    }
+    sidebarProvider?.updateFilePath(editor.document.fileName);
+  });
 
   context.subscriptions.push(
     scanCommand,
@@ -996,6 +912,7 @@ export function activate(context: vscode.ExtensionContext) {
     runEngineCommand,
     openHomeCommand,
     openListener,
+    activeListener,
     output
   );
 }
