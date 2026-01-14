@@ -22,11 +22,6 @@ type ScanResults = {
   crashes: CrashEntry[];
 };
 
-type PackageGroup = {
-  name: string;
-  crashes: CrashEntry[];
-};
-
 type EngineConfig = {
   scanPackages: string[];
 };
@@ -64,7 +59,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private lastStatus = 'Idle';
   private lastFilePath = 'No file selected';
   private currentResults: ScanResults | undefined;
-  private packageGroups: PackageGroup[] = [];
   private scanPackages: string[] = [];
 
   constructor(
@@ -166,10 +160,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     this.render();
   }
 
-  updateResults(results: ScanResults, groups: PackageGroup[] = [], scanPackages: string[] = []) {
+  updateResults(results: ScanResults, scanPackages: string[] = []) {
     this.currentResults = results;
     this.lastFilePath = results.filePath;
-    this.packageGroups = groups;
     this.scanPackages = scanPackages;
     this.lastContent = '';
     this.render();
@@ -183,7 +176,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       this.view.webview.html = this.renderResults(
         this.currentResults,
         undefined,
-        this.packageGroups,
         this.scanPackages
       );
       return;
@@ -197,7 +189,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     this.view.webview.html = this.renderResults(
       emptyResults,
       this.lastContent,
-      this.packageGroups,
       this.scanPackages
     );
   }
@@ -205,7 +196,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private renderResults(
     results: ScanResults,
     message?: string,
-    packageGroups: PackageGroup[] = [],
     scanPackages: string[] = []
   ): string {
     const escape = (value: string | undefined | null) =>
@@ -238,32 +228,21 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       entries.length
         ? entries
             .map((entry) => {
-              return `<li><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(
+              const previewLower = entry.preview.toLowerCase();
+              const matched = scanPackages.filter((pkg) =>
+                previewLower.includes(pkg.toLowerCase())
+              );
+              const matchedAttr = matched.join(',');
+              return `<li data-packages="${escape(matchedAttr)}"><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(
                 entry.preview
               )}</li>`;
             })
             .join('')
         : '<li>None</li>';
 
-    const packageOptions: string[] = [];
-    const packageSections =
-      packageGroups.length > 0
-        ? packageGroups
-            .map((group, index) => {
-              const value = `pkg-${index}`;
-              packageOptions.push(`<option value="${value}">${escape(group.name)}</option>`);
-              return `
-                <div class="section" data-package="${value}">
-                  <h4>Package: ${escape(group.name)}</h4>
-                  <div class="subsection">
-                    <h4>Crashes</h4>
-                    <ul>${renderEntries(group.crashes)}</ul>
-                  </div>
-                </div>
-              `;
-            })
-            .join('')
-        : '';
+    const packageOptions = scanPackages.map(
+      (pkg) => `<option value="${escape(pkg)}">${escape(pkg)}</option>`
+    );
 
     const messageSection = message
       ? `<h4>Message</h4><div class="message">${escape(message)}</div>`
@@ -416,8 +395,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             <h4>Versions</h4>
             <ul>${versions}</ul>
             <h4>Crashes</h4>
-            <ul>${crashes}</ul>
-            ${packageSections}
+            <ul id="crashList">${crashes}</ul>
           </div>
           <script>
             const vscode = acquireVsCodeApi();
@@ -455,8 +433,10 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             if (packageSelect) {
               const applyFilter = () => {
                 const value = packageSelect.value;
-                document.querySelectorAll('[data-package]').forEach((section) => {
-                  section.style.display = section.getAttribute('data-package') === value ? '' : 'none';
+                document.querySelectorAll('#crashList li').forEach((item) => {
+                  const data = item.getAttribute('data-packages') || '';
+                  const match = data.split(',').includes(value);
+                  item.style.display = match ? '' : 'none';
                 });
               };
               applyFilter();
@@ -628,29 +608,6 @@ function buildResultFilePath(filePath: string): string {
   return `${filePath}.wlhresult`;
 }
 
-function buildPackageGroups(results: ScanResults, packages: string[]): PackageGroup[] {
-  if (packages.length === 0) {
-    return [];
-  }
-  const groups = packages.map((name) => ({
-    name,
-    crashes: [] as CrashEntry[]
-  }));
-
-  const matchesPackage = (text: string, packageName: string) =>
-    text.toLowerCase().includes(packageName.toLowerCase());
-
-  results.crashes.forEach((crash) => {
-    groups.forEach((group) => {
-      if (matchesPackage(crash.preview, group.name)) {
-        group.crashes.push(crash);
-      }
-    });
-  });
-
-  return groups;
-}
-
 async function waitForResultFile(filePath: string, timeoutMs: number): Promise<string> {
   const target = buildResultFilePath(filePath);
   const deadline = Date.now() + timeoutMs;
@@ -690,8 +647,7 @@ async function scanFull(filePath: string) {
 
     const raw = await waitForResultFile(filePath, 120_000);
     const results = normalizeResults(JSON.parse(raw));
-    const grouped = buildPackageGroups(results, engineConfig.scanPackages);
-    sidebarProvider?.updateResults(results, grouped, engineConfig.scanPackages);
+    sidebarProvider?.updateResults(results, engineConfig.scanPackages);
     sidebarProvider?.updateStatus('Scan complete');
     output.appendLine(`Scan complete: ${filePath}`);
   } catch (err) {
@@ -719,8 +675,7 @@ async function refreshSidebarFromActiveEditor() {
     const raw = fs.readFileSync(resultPath, 'utf8');
     const results = normalizeResults(JSON.parse(raw));
     const engineConfig = readEngineConfig();
-    const grouped = buildPackageGroups(results, engineConfig.scanPackages);
-    sidebarProvider?.updateResults(results, grouped, engineConfig.scanPackages);
+    sidebarProvider?.updateResults(results, engineConfig.scanPackages);
     sidebarProvider?.updateStatus('Ready');
   } catch (err) {
     sidebarProvider?.update('Failed to load cached results.');
