@@ -32,12 +32,20 @@ type ScanResults = {
   jsonBlocks: JsonBlockEntry[];
 };
 
+type PackageGroup = {
+  name: string;
+  crashes: CrashEntry[];
+  jsonBlocks: JsonBlockEntry[];
+};
+
 class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private lastContent = 'No scans yet.';
   private lastStatus = 'Idle';
   private lastFilePath = 'No file selected';
   private currentResults: ScanResults | undefined;
+  private packageGroups: PackageGroup[] = [];
+  private unmatchedGroup: PackageGroup | undefined;
 
   constructor(
     private readonly onJump: (filePath: string, line: number) => void,
@@ -120,9 +128,11 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     this.render();
   }
 
-  updateResults(results: ScanResults) {
+  updateResults(results: ScanResults, groups: PackageGroup[] = [], unmatched?: PackageGroup) {
     this.currentResults = results;
     this.lastFilePath = results.filePath;
+    this.packageGroups = groups;
+    this.unmatchedGroup = unmatched;
     this.lastContent = '';
     this.render();
   }
@@ -132,7 +142,12 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
     if (this.currentResults) {
-      this.view.webview.html = this.renderResults(this.currentResults);
+      this.view.webview.html = this.renderResults(
+        this.currentResults,
+        undefined,
+        this.packageGroups,
+        this.unmatchedGroup
+      );
       return;
     }
 
@@ -143,10 +158,20 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       tags: [],
       jsonBlocks: []
     };
-    this.view.webview.html = this.renderResults(emptyResults, this.lastContent);
+    this.view.webview.html = this.renderResults(
+      emptyResults,
+      this.lastContent,
+      this.packageGroups,
+      this.unmatchedGroup
+    );
   }
 
-  private renderResults(results: ScanResults, message?: string): string {
+  private renderResults(
+    results: ScanResults,
+    message?: string,
+    packageGroups: PackageGroup[] = [],
+    unmatched?: PackageGroup
+  ): string {
     const escape = (value: string) =>
       value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const versions = results.versions.length
@@ -177,6 +202,62 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
           )
           .join('')
       : '<li>None</li>';
+
+    const renderEntries = (entries: Array<CrashEntry | JsonBlockEntry>, lineKey: 'line' | 'startLine') =>
+      entries.length
+        ? entries
+            .map((entry) => {
+              const line =
+                lineKey === 'line'
+                  ? (entry as CrashEntry).line
+                  : (entry as JsonBlockEntry).startLine;
+              const preview =
+                lineKey === 'line'
+                  ? (entry as CrashEntry).preview
+                  : (entry as JsonBlockEntry).preview;
+              return `<li><button class="jump" data-line="${line}">L${line}</button> ${escape(
+                preview
+              )}</li>`;
+            })
+            .join('')
+        : '<li>None</li>';
+
+    const packageSections =
+      packageGroups.length > 0
+        ? packageGroups
+            .map(
+              (group) => `
+                <div class="section">
+                  <h4>Package: ${escape(group.name)}</h4>
+                  <div class="subsection">
+                    <h4>Crashes</h4>
+                    <ul>${renderEntries(group.crashes, 'line')}</ul>
+                  </div>
+                  <div class="subsection">
+                    <h4>JSON Blocks</h4>
+                    <ul>${renderEntries(group.jsonBlocks, 'startLine')}</ul>
+                  </div>
+                </div>
+              `
+            )
+            .join('')
+        : '';
+
+    const unmatchedSection = unmatched
+      ? `
+          <div class="section">
+            <h4>Package: ${escape(unmatched.name)}</h4>
+            <div class="subsection">
+              <h4>Crashes</h4>
+              <ul>${renderEntries(unmatched.crashes, 'line')}</ul>
+            </div>
+            <div class="subsection">
+              <h4>JSON Blocks</h4>
+              <ul>${renderEntries(unmatched.jsonBlocks, 'startLine')}</ul>
+            </div>
+          </div>
+        `
+      : '';
 
     const messageSection = message
       ? `<h4>Message</h4><div class="message">${escape(message)}</div>`
@@ -216,6 +297,12 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               flex-wrap: wrap;
               gap: 8px;
               margin: 10px 0 12px 0;
+            }
+            .section {
+              margin-top: 14px;
+            }
+            .subsection {
+              margin-top: 8px;
             }
             button {
               background: var(--vscode-button-background);
@@ -295,6 +382,8 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             <ul>${tags}</ul>
             <h4>JSON Blocks</h4>
             <ul>${blocks}</ul>
+            ${packageSections}
+            ${unmatchedSection}
           </div>
           <script>
             const vscode = acquireVsCodeApi();
@@ -404,6 +493,64 @@ async function runWlhJson<T>(args: string[]): Promise<T> {
   return JSON.parse(raw) as T;
 }
 
+function parsePackageList(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function buildPackageGroups(results: ScanResults, packages: string[]): {
+  groups: PackageGroup[];
+  unmatched?: PackageGroup;
+} {
+  if (packages.length === 0) {
+    return { groups: [] };
+  }
+  const groups = packages.map((name) => ({
+    name,
+    crashes: [] as CrashEntry[],
+    jsonBlocks: [] as JsonBlockEntry[]
+  }));
+  const unmatched: PackageGroup = {
+    name: 'Unmatched',
+    crashes: [],
+    jsonBlocks: []
+  };
+
+  const matchesPackage = (text: string, packageName: string) =>
+    text.toLowerCase().includes(packageName.toLowerCase());
+
+  results.crashes.forEach((crash) => {
+    let matched = false;
+    groups.forEach((group) => {
+      if (matchesPackage(crash.preview, group.name)) {
+        group.crashes.push(crash);
+        matched = true;
+      }
+    });
+    if (!matched) {
+      unmatched.crashes.push(crash);
+    }
+  });
+
+  results.jsonBlocks.forEach((block) => {
+    let matched = false;
+    const haystack = `${block.preview}\n${block.content}`;
+    groups.forEach((group) => {
+      if (matchesPackage(haystack, group.name)) {
+        group.jsonBlocks.push(block);
+        matched = true;
+      }
+    });
+    if (!matched) {
+      unmatched.jsonBlocks.push(block);
+    }
+  });
+
+  return { groups, unmatched };
+}
+
 async function scanFastThenFull(filePath: string) {
   output.appendLine(`Scanning ${filePath}`);
   sidebarProvider?.update('Scanning...');
@@ -413,7 +560,7 @@ async function scanFastThenFull(filePath: string) {
     const scanResult = await runWlhJson<{ status: string; jobId?: string }>([
       'scan',
       '--mode',
-      'fast_then_full',
+      'full',
       filePath
     ]);
     if (scanResult.status !== 'ok') {
@@ -449,7 +596,10 @@ async function scanFastThenFull(filePath: string) {
       tags: tags.tags || [],
       jsonBlocks: jsonBlocks.jsonBlocks || []
     };
-    sidebarProvider?.updateResults(results);
+    const config = vscode.workspace.getConfiguration('wlh');
+    const packageList = parsePackageList(config.get<string>('scan.packages') || '');
+    const grouped = buildPackageGroups(results, packageList);
+    sidebarProvider?.updateResults(results, grouped.groups, grouped.unmatched);
     sidebarProvider?.updateStatus('Scan complete');
     output.appendLine(`Scan complete: ${filePath}`);
   } catch (err) {

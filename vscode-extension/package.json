@@ -93,6 +93,11 @@
           "type": "string",
           "default": "",
           "description": "Path to the wlh executable"
+        },
+        "wlh.scan.packages": {
+          "type": "string",
+          "default": "",
+          "description": "Comma-separated package names to group scan results"
         }
       }
     }
