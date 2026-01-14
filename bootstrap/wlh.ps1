@@ -295,25 +295,24 @@ switch ($Command) {
   "restart" { Stop-Daemon $Home | Out-Null; Start-Daemon $Home $BaseUrl $NoUpdate }
   "update" { Ensure-Engine $Home $BaseUrl $NoUpdate; Write-Json @{ status = "ok" } }
   "scan" {
-    $mode = "fast"; $file = ""
+    $file = ""
     for ($i=0; $i -lt $ArgsList.Count; $i++) {
-      if ($ArgsList[$i] -eq "--mode") { $mode = $ArgsList[$i+1]; $i++ }
-      else { $file = $ArgsList[$i] }
+      $file = $ArgsList[$i]
     }
     if (-not $file) { Write-ErrorJson "missing_file"; exit 1 }
-    Proxy-Scan $Home $file $mode
+    Proxy-Scan $Home $file "full"
   }
   "versions" {
     $file = $ArgsList[0]
     if (-not $file) { Write-ErrorJson "missing_file"; exit 1 }
-    $scan = Proxy-Scan $Home $file "fast" | ConvertFrom-Json
+    $scan = Proxy-Scan $Home $file "full" | ConvertFrom-Json
     if (-not (Wait-Job $Home $scan.jobId)) { Write-ErrorJson "scan_failed"; exit 1 }
     Proxy-Result $Home "versions" ""
   }
   "crashes" {
     $file = $ArgsList[0]
     if (-not $file) { Write-ErrorJson "missing_file"; exit 1 }
-    $scan = Proxy-Scan $Home $file "fast" | ConvertFrom-Json
+    $scan = Proxy-Scan $Home $file "full" | ConvertFrom-Json
     if (-not (Wait-Job $Home $scan.jobId)) { Write-ErrorJson "scan_failed"; exit 1 }
     Proxy-Result $Home "crashes" ""
   }

@@ -4,10 +4,8 @@ WLH starts a local daemon per `WLH_HOME` and proxies all commands through it. Th
 
 ## Examples
 
-- Fast scan:
-  - `wlh scan --mode fast /path/to/log.txt`
-- Fast then full (recommended):
-  - `wlh scan --mode fast_then_full /path/to/log.txt`
+- Scan:
+  - `wlh scan /path/to/log.txt`
 - Fetch results:
   - `wlh versions /path/to/log.txt`
   - `wlh crashes /path/to/log.txt`

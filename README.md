@@ -65,7 +65,7 @@ Set `wlhPath` and `decryptJar` in `wlh.config.json` (see `ue18-scripts/config.te
 
 Common commands:
 - `wlh status`
-- `wlh scan --mode fast_then_full /path/to/log.txt`
+- `wlh scan /path/to/log.txt`
 - `wlh versions /path/to/log.txt`
 - `wlh crashes /path/to/log.txt`
 - `wlh decrypt /path/to/log.txt --jar /path/to/dec.jar --timeout 60`

@@ -541,15 +541,10 @@ case "$COMMAND" in
     json_ok
     ;;
   scan)
-    local_mode="fast"
     file=""
     i=0
     while [ $i -lt ${#REMAINING[@]} ]; do
       case "${REMAINING[$i]}" in
-        --mode)
-          local_mode="${REMAINING[$((i + 1))]:-fast}"
-          i=$((i + 2))
-          ;;
         *)
           file="${REMAINING[$i]}"
           i=$((i + 1))
@@ -560,7 +555,7 @@ case "$COMMAND" in
       json_error "missing_file"
       exit 1
     fi
-    proxy_scan "$local_mode" "$file"
+    proxy_scan "full" "$file"
     ;;
   versions)
     file="${REMAINING[0]:-}"
@@ -568,7 +563,7 @@ case "$COMMAND" in
       json_error "missing_file"
       exit 1
     fi
-    scan_json=$(proxy_scan "fast" "$file")
+    scan_json=$(proxy_scan "full" "$file")
     job_id=$(extract_job_id "$scan_json")
     if [ -z "$job_id" ]; then
       printf '%s\n' "$scan_json"
@@ -588,7 +583,7 @@ case "$COMMAND" in
       json_error "missing_file"
       exit 1
     fi
-    scan_json=$(proxy_scan "fast" "$file")
+    scan_json=$(proxy_scan "full" "$file")
     job_id=$(extract_job_id "$scan_json")
     if [ -z "$job_id" ]; then
       printf '%s\n' "$scan_json"
