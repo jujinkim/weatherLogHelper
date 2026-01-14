@@ -33,6 +33,30 @@
       {
         "command": "wlh.openSettings",
         "title": "WLH: Open Settings"
+      },
+      {
+        "command": "wlh.status",
+        "title": "WLH: Engine Status"
+      },
+      {
+        "command": "wlh.start",
+        "title": "WLH: Engine Start"
+      },
+      {
+        "command": "wlh.restart",
+        "title": "WLH: Engine Restart"
+      },
+      {
+        "command": "wlh.stop",
+        "title": "WLH: Engine Stop"
+      },
+      {
+        "command": "wlh.runEngineDirect",
+        "title": "WLH: Run Engine Direct"
+      },
+      {
+        "command": "wlh.openHome",
+        "title": "WLH: Open WLH Home Folder"
       }
     ],
     "views": {

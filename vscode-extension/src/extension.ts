@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
+import * as os from 'os';
+import * as path from 'path';
 
 const output = vscode.window.createOutputChannel('WLH');
 
@@ -33,12 +35,19 @@ type ScanResults = {
 class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private lastContent = 'No scans yet.';
+  private lastStatus = 'Idle';
   private currentResults: ScanResults | undefined;
 
   constructor(
     private readonly onJump: (filePath: string, line: number) => void,
     private readonly onDecrypt: (filePath: string) => void,
-    private readonly onOpenSettings: () => void
+    private readonly onOpenSettings: () => void,
+    private readonly onStatus: () => void,
+    private readonly onStart: () => void,
+    private readonly onRestart: () => void,
+    private readonly onStop: () => void,
+    private readonly onRunEngineDirect: () => void,
+    private readonly onOpenHome: () => void
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -64,12 +73,35 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       if (message?.type === 'openSettings') {
         this.onOpenSettings();
       }
+      if (message?.type === 'status') {
+        this.onStatus();
+      }
+      if (message?.type === 'start') {
+        this.onStart();
+      }
+      if (message?.type === 'restart') {
+        this.onRestart();
+      }
+      if (message?.type === 'stop') {
+        this.onStop();
+      }
+      if (message?.type === 'runEngineDirect') {
+        this.onRunEngineDirect();
+      }
+      if (message?.type === 'openHome') {
+        this.onOpenHome();
+      }
     });
     this.render();
   }
 
   update(content: string) {
     this.lastContent = content;
+    this.render();
+  }
+
+  updateStatus(content: string) {
+    this.lastStatus = content;
     this.render();
   }
 
@@ -135,8 +167,17 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
         <body>
           <h3>WLH Results</h3>
           <p>${escape(results.filePath)}</p>
-          <button id="decrypt">Run Decrypt</button>
-          <button id="openSettings">Open Settings</button>
+          <div>
+            <button id="status">Status</button>
+            <button id="start">Start</button>
+            <button id="restart">Restart</button>
+            <button id="stop">Stop</button>
+            <button id="runEngineDirect">Run Engine Direct</button>
+            <button id="openHome">Open WLH Home</button>
+            <button id="decrypt">Run Decrypt</button>
+            <button id="openSettings">Open Settings</button>
+          </div>
+          <p><strong>Status:</strong> ${escape(this.lastStatus)}</p>
           <h4>Versions</h4>
           <ul>${versions}</ul>
           <h4>Crashes</h4>
@@ -147,6 +188,24 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
           <ul>${blocks}</ul>
           <script>
             const vscode = acquireVsCodeApi();
+            document.getElementById('status').addEventListener('click', () => {
+              vscode.postMessage({ type: 'status' });
+            });
+            document.getElementById('start').addEventListener('click', () => {
+              vscode.postMessage({ type: 'start' });
+            });
+            document.getElementById('restart').addEventListener('click', () => {
+              vscode.postMessage({ type: 'restart' });
+            });
+            document.getElementById('stop').addEventListener('click', () => {
+              vscode.postMessage({ type: 'stop' });
+            });
+            document.getElementById('runEngineDirect').addEventListener('click', () => {
+              vscode.postMessage({ type: 'runEngineDirect' });
+            });
+            document.getElementById('openHome').addEventListener('click', () => {
+              vscode.postMessage({ type: 'openHome' });
+            });
             document.getElementById('decrypt').addEventListener('click', () => {
               vscode.postMessage({ type: 'decrypt' });
             });
@@ -200,6 +259,7 @@ async function runWlhJson<T>(args: string[]): Promise<T> {
 async function scanFastThenFull(filePath: string) {
   output.appendLine(`Scanning ${filePath}`);
   sidebarProvider?.update('Scanning...');
+  sidebarProvider?.updateStatus('Scanning...');
   try {
     const scanResult = await runWlhJson<{ status: string; jobId?: string }>([
       'scan',
@@ -241,10 +301,12 @@ async function scanFastThenFull(filePath: string) {
       jsonBlocks: jsonBlocks.jsonBlocks || []
     };
     sidebarProvider?.updateResults(results);
+    sidebarProvider?.updateStatus('Scan complete');
     output.appendLine(`Scan complete: ${filePath}`);
   } catch (err) {
     output.appendLine(`WLH error: ${(err as Error).message}`);
     sidebarProvider?.update(`Error: ${(err as Error).message}`);
+    sidebarProvider?.updateStatus('Error');
   }
 }
 
@@ -257,6 +319,7 @@ async function decryptFile(filePath: string) {
   }
   try {
     sidebarProvider?.update('Decrypting...');
+    sidebarProvider?.updateStatus('Decrypting...');
     const result = await runWlhJson<Record<string, unknown>>([
       'decrypt',
       filePath,
@@ -264,10 +327,12 @@ async function decryptFile(filePath: string) {
       jarPath
     ]);
     sidebarProvider?.update(JSON.stringify(result));
+    sidebarProvider?.updateStatus('Decrypt complete');
   } catch (err) {
     const message = (err as Error).message;
     vscode.window.showErrorMessage(`WLH: Decrypt failed: ${message}`);
     sidebarProvider?.update(`Error: ${message}`);
+    sidebarProvider?.updateStatus('Error');
   }
 }
 
@@ -294,6 +359,42 @@ function resolveActiveFilePath(): string | undefined {
 
 let sidebarProvider: WlhSidebarProvider | undefined;
 
+function resolveDefaultHome(): string {
+  return path.join(os.homedir(), '.wlh');
+}
+
+function resolveEngineJarPath(): string {
+  return path.join(resolveDefaultHome(), 'engine', 'wlh-engine.jar');
+}
+
+async function runEngineDirect() {
+  const jarPath = resolveEngineJarPath();
+  const homePath = resolveDefaultHome();
+  const extraArgs =
+    (await vscode.window.showInputBox({
+      title: 'WLH Run Engine Direct',
+      prompt: 'Optional extra args (e.g., --port 0)',
+      placeHolder: '--port 0'
+    })) || '';
+  const terminal = vscode.window.createTerminal('WLH Engine');
+  const command = `java -jar "${jarPath}" --home "${homePath}" ${extraArgs}`.trim();
+  terminal.show();
+  terminal.sendText(command);
+}
+
+async function runWlhCommand(args: string[], label: string) {
+  sidebarProvider?.updateStatus(label);
+  try {
+    const result = await runWlhJson<Record<string, unknown>>(args);
+    sidebarProvider?.updateStatus(`${label}: ok`);
+    output.appendLine(JSON.stringify(result));
+  } catch (err) {
+    const message = (err as Error).message;
+    sidebarProvider?.updateStatus(`${label}: error`);
+    vscode.window.showErrorMessage(`WLH: ${label} failed: ${message}`);
+  }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   sidebarProvider = new WlhSidebarProvider(
     async (filePath, line) => {
@@ -317,6 +418,25 @@ export function activate(context: vscode.ExtensionContext) {
     },
     async () => {
       await vscode.commands.executeCommand('workbench.action.openSettings', 'wlh');
+    },
+    async () => {
+      await runWlhCommand(['status', '--no-update'], 'Status');
+    },
+    async () => {
+      await runWlhCommand(['start'], 'Start');
+    },
+    async () => {
+      await runWlhCommand(['restart'], 'Restart');
+    },
+    async () => {
+      await runWlhCommand(['stop'], 'Stop');
+    },
+    async () => {
+      await runEngineDirect();
+    },
+    async () => {
+      const homePath = resolveDefaultHome();
+      await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(homePath));
     }
   );
   context.subscriptions.push(
@@ -351,6 +471,25 @@ export function activate(context: vscode.ExtensionContext) {
   const openSettingsCommand = vscode.commands.registerCommand('wlh.openSettings', async () => {
     await vscode.commands.executeCommand('workbench.action.openSettings', 'wlh');
   });
+  const statusCommand = vscode.commands.registerCommand('wlh.status', async () => {
+    await runWlhCommand(['status', '--no-update'], 'Status');
+  });
+  const startCommand = vscode.commands.registerCommand('wlh.start', async () => {
+    await runWlhCommand(['start'], 'Start');
+  });
+  const restartCommand = vscode.commands.registerCommand('wlh.restart', async () => {
+    await runWlhCommand(['restart'], 'Restart');
+  });
+  const stopCommand = vscode.commands.registerCommand('wlh.stop', async () => {
+    await runWlhCommand(['stop'], 'Stop');
+  });
+  const runEngineCommand = vscode.commands.registerCommand('wlh.runEngineDirect', async () => {
+    await runEngineDirect();
+  });
+  const openHomeCommand = vscode.commands.registerCommand('wlh.openHome', async () => {
+    const homePath = resolveDefaultHome();
+    await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(homePath));
+  });
 
   const openListener = vscode.workspace.onDidOpenTextDocument(async (doc) => {
     if (doc.isUntitled) {
@@ -366,6 +505,12 @@ export function activate(context: vscode.ExtensionContext) {
     scanCommand,
     decryptCommand,
     openSettingsCommand,
+    statusCommand,
+    startCommand,
+    restartCommand,
+    stopCommand,
+    runEngineCommand,
+    openHomeCommand,
     openListener,
     output
   );
