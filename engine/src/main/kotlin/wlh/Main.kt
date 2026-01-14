@@ -17,6 +17,7 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.time.Instant
+import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -32,6 +33,8 @@ enum class ScanMode {
 }
 
 data class CrashEntry(val line: Long, val preview: String)
+
+data class LineEntry(val line: Long, val text: String)
 
 data class ScanResult(
     val file: String,
@@ -324,70 +327,111 @@ private fun runScan(
 }
 
 private fun scanFast(file: File, job: Job, config: EngineConfig): ScanResult {
-    val versions = linkedSetOf<String>()
-    val crashes = mutableListOf<CrashEntry>()
-    val versionRegex = Regex("(?i)\\bversion[:=\\s]+([0-9][0-9A-Za-z._-]*)")
-    val crashMarkers = listOf("fatal exception", "anr", "fatal signal", "sigsegv", "native crash", "crash")
-    val packageFilters = config.scanPackages.map { it.lowercase(Locale.ROOT) }
-
-    val totalSize = file.length().coerceAtLeast(1L)
-    var processedBytes = 0L
-    var lineNumber = 0L
-
-    file.bufferedReader().useLines { lines ->
-        lines.forEach { line ->
-            lineNumber += 1
-            processedBytes += line.length + 1
-
-            versionRegex.find(line)?.let { match ->
-                versions.add(match.groupValues[1])
-            }
-
-            val lower = line.lowercase(Locale.ROOT)
-            if (crashMarkers.any { lower.contains(it) }) {
-                if (packageFilters.isEmpty() || packageFilters.any { lower.contains(it) }) {
-                    crashes.add(CrashEntry(lineNumber, line.take(200)))
-                }
-            }
-
-            if (lineNumber % 2000L == 0L) {
-                job.progress = ((processedBytes.toDouble() / totalSize) * 100).toInt().coerceIn(0, 90)
-            }
-        }
-    }
+    val (versions, crashes) = scanByPackageWindows(file, job, config, 90)
 
     return ScanResult(
         file = file.absolutePath,
         mode = "fast",
-        versions = versions.toList(),
+        versions = versions,
         crashes = crashes,
         generatedAt = Instant.now().toString()
     )
 }
 
 private fun scanFull(file: File, job: Job, base: ScanResult?, config: EngineConfig): ScanResult {
-    val totalSize = file.length().coerceAtLeast(1L)
-    var processedBytes = 0L
-    var lineNumber = 0L
-
-    file.bufferedReader().useLines { lines ->
-        lines.forEach { line ->
-            lineNumber += 1
-            processedBytes += line.length + 1
-
-            if (lineNumber % 2000L == 0L) {
-                job.progress = ((processedBytes.toDouble() / totalSize) * 100).toInt().coerceIn(0, 95)
-            }
-        }
+    if (base != null) {
+        return base.copy(mode = "full", generatedAt = Instant.now().toString())
     }
+    val (versions, crashes) = scanByPackageWindows(file, job, config, 95)
 
     return ScanResult(
         file = file.absolutePath,
         mode = "full",
-        versions = base?.versions ?: emptyList(),
-        crashes = base?.crashes ?: emptyList(),
+        versions = versions,
+        crashes = crashes,
         generatedAt = Instant.now().toString()
     )
+}
+
+private fun scanByPackageWindows(
+    file: File,
+    job: Job,
+    config: EngineConfig,
+    progressCap: Int
+): Pair<List<String>, List<CrashEntry>> {
+    val packageFilters = config.scanPackages.map { it.lowercase(Locale.ROOT) }
+    if (packageFilters.isEmpty()) {
+        return Pair(emptyList(), emptyList())
+    }
+
+    val versions = linkedSetOf<String>()
+    val crashes = mutableListOf<CrashEntry>()
+    val crashLines = mutableSetOf<Long>()
+    val versionRegex = Regex("(?i)\\bversion[:=\\s]+([0-9][0-9A-Za-z._-]*)")
+    val crashMarkers = listOf("fatal exception", "anr", "fatal signal", "sigsegv", "native crash", "crash")
+
+    val totalSize = file.length().coerceAtLeast(1L)
+    var processedBytes = 0L
+    var lineNumber = 0L
+    val prevLines = ArrayDeque<LineEntry>(3)
+    val activeWindows = mutableListOf<Int>()
+
+    fun processLine(lineNo: Long, line: String) {
+        versionRegex.find(line)?.let { match ->
+            versions.add(match.groupValues[1])
+        }
+        val lower = line.lowercase(Locale.ROOT)
+        if (crashMarkers.any { lower.contains(it) } && crashLines.add(lineNo)) {
+            crashes.add(CrashEntry(lineNo, line.take(200)))
+        }
+    }
+
+    file.bufferedReader().use { reader ->
+        var line = reader.readLine()
+        while (line != null) {
+            lineNumber += 1
+            processedBytes += line.length + 1
+
+            val lower = line.lowercase(Locale.ROOT)
+            val existingWindows = activeWindows.size
+            if (existingWindows > 0) {
+                processLine(lineNumber, line)
+            }
+
+            if (packageFilters.any { lower.contains(it) }) {
+                for (entry in prevLines) {
+                    processLine(entry.line, entry.text)
+                }
+                if (existingWindows == 0) {
+                    processLine(lineNumber, line)
+                }
+                activeWindows.add(20)
+            }
+
+            if (existingWindows > 0) {
+                for (i in existingWindows - 1 downTo 0) {
+                    val remaining = activeWindows[i] - 1
+                    if (remaining <= 0) {
+                        activeWindows.removeAt(i)
+                    } else {
+                        activeWindows[i] = remaining
+                    }
+                }
+            }
+
+            prevLines.addLast(LineEntry(lineNumber, line))
+            if (prevLines.size > 3) {
+                prevLines.removeFirst()
+            }
+
+            if (lineNumber % 2000L == 0L) {
+                job.progress = ((processedBytes.toDouble() / totalSize) * 100).toInt().coerceIn(0, progressCap)
+            }
+            line = reader.readLine()
+        }
+    }
+
+    return Pair(versions.toList(), crashes)
 }
 
 private fun runDecrypt(file: String, jar: String, timeoutSeconds: Int): Map<String, Any> {
