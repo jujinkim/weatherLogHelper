@@ -24,6 +24,7 @@
     "onCommand:wlh.stop",
     "onCommand:wlh.runEngineDirect",
     "onCommand:wlh.openHome",
+    "onCommand:wlh.refreshView",
     "onView:wlh.sidebar",
     "onStartupFinished"
   ],
@@ -65,8 +66,22 @@
       {
         "command": "wlh.openHome",
         "title": "WLH: Open WLH Home Folder"
+      },
+      {
+        "command": "wlh.refreshView",
+        "title": "WLH: Refresh Sidebar"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "wlh.refreshView",
+          "when": "view == wlh.sidebar",
+          "group": "navigation",
+          "icon": "$(refresh)"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {

@@ -685,6 +685,35 @@ async function scanFull(filePath: string) {
   }
 }
 
+async function refreshSidebarFromActiveEditor() {
+  const filePath = resolveActiveFilePath();
+  if (!filePath) {
+    sidebarProvider?.update('No active file.');
+    sidebarProvider?.updateStatus('Idle');
+    sidebarProvider?.updateFilePath('No file selected');
+    return;
+  }
+  sidebarProvider?.updateFilePath(filePath);
+  const resultPath = buildResultFilePath(filePath);
+  if (!fs.existsSync(resultPath)) {
+    sidebarProvider?.update('No scan results yet.');
+    sidebarProvider?.updateStatus('Idle');
+    return;
+  }
+  try {
+    const raw = fs.readFileSync(resultPath, 'utf8');
+    const results = normalizeResults(JSON.parse(raw));
+    const engineConfig = readEngineConfig();
+    const grouped = buildPackageGroups(results, engineConfig.scanPackages);
+    sidebarProvider?.updateResults(results, grouped, engineConfig.scanPackages);
+    sidebarProvider?.updateStatus('Ready');
+  } catch (err) {
+    sidebarProvider?.update('Failed to load cached results.');
+    sidebarProvider?.updateStatus('Error');
+    output.appendLine(`WLH refresh error: ${(err as Error).message}`);
+  }
+}
+
 async function decryptFile(filePath: string) {
   const config = vscode.workspace.getConfiguration('wlh');
   const jarPath = config.get<string>('decrypt.jarPath') || '';
@@ -862,6 +891,9 @@ export function activate(context: vscode.ExtensionContext) {
     }
     await scanFull(filePath);
   });
+  const refreshCommand = vscode.commands.registerCommand('wlh.refreshView', async () => {
+    await refreshSidebarFromActiveEditor();
+  });
   const decryptCommand = vscode.commands.registerCommand('wlh.decryptCurrentFile', async () => {
     const filePath = resolveActiveFilePath();
     if (!filePath) {
@@ -907,11 +939,12 @@ export function activate(context: vscode.ExtensionContext) {
     if (!editor) {
       return;
     }
-    sidebarProvider?.updateFilePath(editor.document.fileName);
+    void refreshSidebarFromActiveEditor();
   });
 
   context.subscriptions.push(
     scanCommand,
+    refreshCommand,
     decryptCommand,
     openSettingsCommand,
     statusCommand,
