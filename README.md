@@ -91,6 +91,8 @@ Schema (high level):
 Notes:
 - The `.wlhresult` file is overwritten on each completed scan.
 - Clients can read `.wlhresult` instead of calling result endpoints.
+ - Version parsing includes both `Package [name] (...)` blocks (codePath + versionName/versionCode) and `mPackageName='name'` blocks with `VersionName:` / `VersionCode:` lines.
+ - Crash parsing includes `FATAL EXCEPTION` (AndroidRuntime lines), `APP CRASHED` (CRASH tag lines), and `ANR in <package>` (next 5 lines).
 
 ## Base URL configuration
 
@@ -118,6 +120,8 @@ Environment variables are not used for base URL resolution.
 
 - Java not found: set `JAVA_HOME` or ensure `java` is on PATH.
 - Slow scans: install `rg` (ripgrep) on the machine; WLH will use it automatically when available.
+- Large files: VSCode may block extension sync for files above its large-file thresholds. Increase `files.maxMemoryForLargeFilesMB` and `files.maxFileSize` to enable jump actions.
+- Updated engine JAR but behavior is unchanged: stop/start the daemon to pick up the new engine.
 - Stale daemon: `wlh stop` then `wlh start`.
 - Update failures: WLH continues using the last installed engine when possible.
 
