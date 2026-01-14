@@ -67,8 +67,17 @@
         "title": "WLH: Open WLH Home Folder"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "wlh",
+          "title": "WLH",
+          "icon": "media/wlh.svg"
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "wlh": [
         {
           "id": "wlh.sidebar",
           "name": "WLH",
