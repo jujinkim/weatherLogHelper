@@ -144,7 +144,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   updateFilePath(filePath: string) {
     if (this.currentResults && this.currentResults.filePath !== filePath) {
       this.currentResults = undefined;
-      this.packageGroups = [];
       this.scanPackages = [];
       this.lastContent = 'No scan results yet.';
     }
@@ -154,7 +153,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
 
   resetForFile(filePath: string, message: string) {
     this.currentResults = undefined;
-    this.packageGroups = [];
     this.scanPackages = [];
     this.lastFilePath = filePath;
     this.lastContent = message;
