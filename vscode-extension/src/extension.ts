@@ -38,6 +38,11 @@ type PackageGroup = {
   jsonBlocks: JsonBlockEntry[];
 };
 
+type TagGroup = {
+  name: string;
+  entries: TagEntry[];
+};
+
 class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private lastContent = 'No scans yet.';
@@ -46,6 +51,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private currentResults: ScanResults | undefined;
   private packageGroups: PackageGroup[] = [];
   private unmatchedGroup: PackageGroup | undefined;
+  private tagGroups: TagGroup[] = [];
 
   constructor(
     private readonly onJump: (filePath: string, line: number) => void,
@@ -128,11 +134,17 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     this.render();
   }
 
-  updateResults(results: ScanResults, groups: PackageGroup[] = [], unmatched?: PackageGroup) {
+  updateResults(
+    results: ScanResults,
+    groups: PackageGroup[] = [],
+    unmatched?: PackageGroup,
+    tagGroups: TagGroup[] = []
+  ) {
     this.currentResults = results;
     this.lastFilePath = results.filePath;
     this.packageGroups = groups;
     this.unmatchedGroup = unmatched;
+    this.tagGroups = tagGroups;
     this.lastContent = '';
     this.render();
   }
@@ -146,7 +158,8 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
         this.currentResults,
         undefined,
         this.packageGroups,
-        this.unmatchedGroup
+        this.unmatchedGroup,
+        this.tagGroups
       );
       return;
     }
@@ -162,7 +175,8 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       emptyResults,
       this.lastContent,
       this.packageGroups,
-      this.unmatchedGroup
+      this.unmatchedGroup,
+      this.tagGroups
     );
   }
 
@@ -170,7 +184,8 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     results: ScanResults,
     message?: string,
     packageGroups: PackageGroup[] = [],
-    unmatched?: PackageGroup
+    unmatched?: PackageGroup,
+    tagGroups: TagGroup[] = []
   ): string {
     const escape = (value: string) =>
       value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -237,6 +252,22 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
                     <h4>JSON Blocks</h4>
                     <ul>${renderEntries(group.jsonBlocks, 'startLine')}</ul>
                   </div>
+                </div>
+              `
+            )
+            .join('')
+        : '';
+
+    const tagSections =
+      tagGroups.length > 0
+        ? tagGroups
+            .map(
+              (group) => `
+                <div class="section">
+                  <h4>Tag: ${escape(group.name)}</h4>
+                  <ul>${group.entries
+                    .map((entry) => `<li>${escape(entry.tag)} (${entry.count})</li>`)
+                    .join('')}</ul>
                 </div>
               `
             )
@@ -384,6 +415,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             <ul>${blocks}</ul>
             ${packageSections}
             ${unmatchedSection}
+            ${tagSections}
           </div>
           <script>
             const vscode = acquireVsCodeApi();
@@ -500,6 +532,16 @@ function parsePackageList(value: string): string[] {
     .filter((item) => item.length > 0);
 }
 
+function buildTagGroups(results: ScanResults, tags: string[]): TagGroup[] {
+  if (tags.length === 0) {
+    return [];
+  }
+  const wanted = tags.map((tag) => tag.toLowerCase());
+  return results.tags
+    .filter((entry) => wanted.includes(entry.tag.toLowerCase()))
+    .map((entry) => ({ name: entry.tag, entries: [entry] }));
+}
+
 function buildPackageGroups(results: ScanResults, packages: string[]): {
   groups: PackageGroup[];
   unmatched?: PackageGroup;
@@ -598,8 +640,10 @@ async function scanFastThenFull(filePath: string) {
     };
     const config = vscode.workspace.getConfiguration('wlh');
     const packageList = parsePackageList(config.get<string>('scan.packages') || '');
+    const tagList = parsePackageList(config.get<string>('scan.tags') || '');
     const grouped = buildPackageGroups(results, packageList);
-    sidebarProvider?.updateResults(results, grouped.groups, grouped.unmatched);
+    const tagGroups = buildTagGroups(results, tagList);
+    sidebarProvider?.updateResults(results, grouped.groups, grouped.unmatched, tagGroups);
     sidebarProvider?.updateStatus('Scan complete');
     output.appendLine(`Scan complete: ${filePath}`);
   } catch (err) {

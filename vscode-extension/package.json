@@ -98,6 +98,11 @@
           "type": "string",
           "default": "",
           "description": "Comma-separated package names to group scan results"
+        },
+        "wlh.scan.tags": {
+          "type": "string",
+          "default": "",
+          "description": "Comma-separated tags to highlight in scan results"
         }
       }
     }
