@@ -602,8 +602,11 @@ private fun scanPackageVersions(file: File, config: EngineConfig): List<VersionE
 private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): List<VersionEntry> {
     val versions = linkedSetOf<VersionEntry>()
     val packageRegex = Regex("Package \\[([^\\]]+)] \\(([0-9A-Za-z]+)\\):")
+    val mPackageRegex = Regex("mPackageName='([^']+)'")
     val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)")
     val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)")
+    val versionCodeAltRegex = Regex("VersionCode:\\s*([0-9]+)")
+    val versionNameAltRegex = Regex("VersionName:\\s*([0-9.]+)")
     file.bufferedReader().use { reader ->
         var lineNumber = 0L
         var line = reader.readLine()
@@ -652,6 +655,35 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
                         versions.add(VersionEntry(headerLine, label))
                     }
                 }
+            } else {
+                val altMatch = mPackageRegex.find(line)
+                if (altMatch != null) {
+                    val packageName = altMatch.groupValues[1].lowercase(Locale.ROOT)
+                    if (packageFilters.contains(packageName)) {
+                        var versionCode: String? = null
+                        var versionName: String? = null
+                        var lookahead = 0
+                        val headerLine = lineNumber
+                        while (lookahead < 3) {
+                            val next = reader.readLine() ?: break
+                            lineNumber += 1
+                            lookahead += 1
+                            if (versionCode == null) {
+                                versionCode = versionCodeAltRegex.find(next)?.groupValues?.get(1)
+                            }
+                            if (versionName == null) {
+                                versionName = versionNameAltRegex.find(next)?.groupValues?.get(1)
+                            }
+                            if (versionCode != null && versionName != null) {
+                                break
+                            }
+                        }
+                        if (versionCode != null && versionName != null) {
+                            val label = "${versionName} (${versionCode})"
+                            versions.add(VersionEntry(headerLine, label))
+                        }
+                    }
+                }
             }
             line = reader.readLine()
         }
@@ -660,7 +692,17 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
 }
 
 private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<VersionEntry>? {
-    val args = mutableListOf("rg", "-n", "-A", "30", "Package \\[", file.absolutePath)
+    val args = mutableListOf(
+        "rg",
+        "-n",
+        "-A",
+        "30",
+        "-e",
+        "Package \\[",
+        "-e",
+        "mPackageName='",
+        file.absolutePath
+    )
     val process = try {
         ProcessBuilder(args)
             .redirectErrorStream(true)
@@ -670,8 +712,11 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
     }
     val versions = linkedSetOf<VersionEntry>()
     val packageRegex = Regex("Package \\[([^\\]]+)] \\(([0-9A-Za-z]+)\\):")
+    val mPackageRegex = Regex("mPackageName='([^']+)'")
     val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)")
     val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)")
+    val versionCodeAltRegex = Regex("VersionCode:\\s*([0-9]+)")
+    val versionNameAltRegex = Regex("VersionName:\\s*([0-9.]+)")
     val lineRegex = Regex("^(\\d+)[-:](.*)$")
 
     var active = false
@@ -682,6 +727,11 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
     var versionName: String? = null
     var headerLineNumber: Long? = null
     var currentPackage: String? = null
+    var altActive = false
+    var altRemaining = 0
+    var altVersionCode: String? = null
+    var altVersionName: String? = null
+    var altHeaderLine: Long? = null
 
     fun flush() {
         if (currentPackage != null && versionCode != null && versionName != null && headerLineNumber != null) {
@@ -712,6 +762,16 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
                 if (active) {
                     flush()
                 }
+                if (altActive) {
+                    if (altHeaderLine != null && altVersionCode != null && altVersionName != null) {
+                        versions.add(VersionEntry(altHeaderLine!!, "${altVersionName} (${altVersionCode})"))
+                    }
+                    altActive = false
+                    altRemaining = 0
+                    altVersionCode = null
+                    altVersionName = null
+                    altHeaderLine = null
+                }
                 return@forEach
             }
             val match = lineRegex.find(raw) ?: return@forEach
@@ -722,6 +782,16 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
                 if (active) {
                     flush()
                 }
+                if (altActive) {
+                    if (altHeaderLine != null && altVersionCode != null && altVersionName != null) {
+                        versions.add(VersionEntry(altHeaderLine!!, "${altVersionName} (${altVersionCode})"))
+                    }
+                    altActive = false
+                    altRemaining = 0
+                    altVersionCode = null
+                    altVersionName = null
+                    altHeaderLine = null
+                }
                 val packageName = headerMatch.groupValues[1].lowercase(Locale.ROOT)
                 if (packageFilters.contains(packageName)) {
                     active = true
@@ -730,6 +800,37 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
                     headerLineNumber = lineNumber
                 }
                 return@forEach
+            }
+            if (!active && !altActive) {
+                val altMatch = mPackageRegex.find(line)
+                if (altMatch != null) {
+                    val packageName = altMatch.groupValues[1].lowercase(Locale.ROOT)
+                    if (packageFilters.contains(packageName)) {
+                        altActive = true
+                        altRemaining = 3
+                        altHeaderLine = lineNumber
+                        altVersionCode = null
+                        altVersionName = null
+                    }
+                }
+            } else if (altActive && altRemaining > 0) {
+                if (altVersionCode == null) {
+                    altVersionCode = versionCodeAltRegex.find(line)?.groupValues?.get(1)
+                }
+                if (altVersionName == null) {
+                    altVersionName = versionNameAltRegex.find(line)?.groupValues?.get(1)
+                }
+                altRemaining -= 1
+                if (altRemaining == 0 || (altVersionCode != null && altVersionName != null)) {
+                    if (altHeaderLine != null && altVersionCode != null && altVersionName != null) {
+                        versions.add(VersionEntry(altHeaderLine!!, "${altVersionName} (${altVersionCode})"))
+                    }
+                    altActive = false
+                    altRemaining = 0
+                    altVersionCode = null
+                    altVersionName = null
+                    altHeaderLine = null
+                }
             }
             if (!active || remaining <= 0) {
                 return@forEach
