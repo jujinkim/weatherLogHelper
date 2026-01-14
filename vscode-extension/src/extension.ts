@@ -36,6 +36,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private lastContent = 'No scans yet.';
   private lastStatus = 'Idle';
+  private lastFilePath = 'No file selected';
   private currentResults: ScanResults | undefined;
 
   constructor(
@@ -47,7 +48,8 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     private readonly onRestart: () => void,
     private readonly onStop: () => void,
     private readonly onRunEngineDirect: () => void,
-    private readonly onOpenHome: () => void
+    private readonly onOpenHome: () => void,
+    private readonly onScan: (filePath: string) => void
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -91,6 +93,14 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       if (message?.type === 'openHome') {
         this.onOpenHome();
       }
+      if (message?.type === 'scan') {
+        const filePath = this.currentResults?.filePath || resolveActiveFilePath();
+        if (filePath) {
+          this.onScan(filePath);
+        } else {
+          vscode.window.showErrorMessage('WLH: No active file to scan.');
+        }
+      }
     });
     this.render();
   }
@@ -105,8 +115,14 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     this.render();
   }
 
+  updateFilePath(filePath: string) {
+    this.lastFilePath = filePath;
+    this.render();
+  }
+
   updateResults(results: ScanResults) {
     this.currentResults = results;
+    this.lastFilePath = results.filePath;
     this.lastContent = '';
     this.render();
   }
@@ -120,74 +136,17 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const safe = this.lastContent
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    this.view.webview.html = `<!DOCTYPE html>
-      <html>
-        <head>
-          <style>
-            :root {
-              --bg: #0f1419;
-              --panel: #1b232c;
-              --panel-2: #0b1116;
-              --accent: #f59e0b;
-              --accent-2: #22c55e;
-              --text: #e5e7eb;
-              --muted: #94a3b8;
-              --border: #2a3642;
-            }
-            * { box-sizing: border-box; }
-            body {
-              margin: 0;
-              padding: 16px;
-              font-family: "Segoe UI", "Noto Sans", "Apple SD Gothic Neo", sans-serif;
-              color: var(--text);
-              background:
-                radial-gradient(1200px 600px at -20% -20%, rgba(245, 158, 11, 0.12), transparent),
-                radial-gradient(900px 500px at 120% 20%, rgba(34, 197, 94, 0.10), transparent),
-                var(--bg);
-            }
-            .card {
-              background: linear-gradient(180deg, rgba(27, 35, 44, 0.96), rgba(11, 17, 22, 0.96));
-              border: 1px solid var(--border);
-              border-radius: 12px;
-              padding: 16px;
-              box-shadow: 0 10px 24px rgba(0,0,0,0.35);
-            }
-            .title {
-              font-size: 14px;
-              letter-spacing: 0.08em;
-              text-transform: uppercase;
-              color: var(--muted);
-            }
-            .status {
-              margin-top: 10px;
-              padding: 10px 12px;
-              background: rgba(245, 158, 11, 0.08);
-              border: 1px solid rgba(245, 158, 11, 0.3);
-              border-radius: 8px;
-              font-size: 12px;
-              color: var(--text);
-            }
-            pre {
-              white-space: pre-wrap;
-              margin: 0;
-              color: var(--text);
-            }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <div class="title">Weather Log Helper</div>
-            <div class="status">${safe}</div>
-          </div>
-        </body>
-      </html>`;
+    const emptyResults: ScanResults = {
+      filePath: this.lastFilePath,
+      versions: [],
+      crashes: [],
+      tags: [],
+      jsonBlocks: []
+    };
+    this.view.webview.html = this.renderResults(emptyResults, this.lastContent);
   }
 
-  private renderResults(results: ScanResults): string {
+  private renderResults(results: ScanResults, message?: string): string {
     const escape = (value: string) =>
       value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const versions = results.versions.length
@@ -219,48 +178,36 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
           .join('')
       : '<li>None</li>';
 
+    const messageSection = message
+      ? `<h4>Message</h4><div class="message">${escape(message)}</div>`
+      : '';
+
     return `<!DOCTYPE html>
       <html>
         <head>
           <style>
-            :root {
-              --bg: #0f1419;
-              --panel: #1b232c;
-              --panel-2: #0b1116;
-              --accent: #f59e0b;
-              --accent-2: #22c55e;
-              --text: #e5e7eb;
-              --muted: #94a3b8;
-              --border: #2a3642;
-            }
             * { box-sizing: border-box; }
             body {
               margin: 0;
               padding: 16px;
-              font-family: "Segoe UI", "Noto Sans", "Apple SD Gothic Neo", sans-serif;
-              color: var(--text);
-              background:
-                radial-gradient(1200px 600px at -20% -20%, rgba(245, 158, 11, 0.12), transparent),
-                radial-gradient(900px 500px at 120% 20%, rgba(34, 197, 94, 0.10), transparent),
-                var(--bg);
+              font-family: var(--vscode-font-family, "Segoe UI", "Noto Sans", sans-serif);
+              color: var(--vscode-foreground);
+              background: var(--vscode-sideBar-background);
             }
             h3 {
               margin: 0 0 6px 0;
               font-size: 16px;
-              letter-spacing: 0.06em;
-              text-transform: uppercase;
-              color: var(--muted);
+              color: var(--vscode-foreground);
             }
             .card {
-              background: linear-gradient(180deg, rgba(27, 35, 44, 0.96), rgba(11, 17, 22, 0.96));
-              border: 1px solid var(--border);
-              border-radius: 12px;
+              background: var(--vscode-sideBar-background);
+              border: 1px solid var(--vscode-panel-border);
+              border-radius: 10px;
               padding: 16px;
-              box-shadow: 0 10px 24px rgba(0,0,0,0.35);
             }
             .path {
               font-size: 12px;
-              color: var(--muted);
+              color: var(--vscode-descriptionForeground);
               margin-bottom: 10px;
               word-break: break-all;
             }
@@ -271,24 +218,23 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               margin: 10px 0 12px 0;
             }
             button {
-              background: #111827;
-              border: 1px solid var(--border);
-              color: var(--text);
+              background: var(--vscode-button-background);
+              border: 1px solid var(--vscode-button-border, transparent);
+              color: var(--vscode-button-foreground);
               padding: 6px 10px;
-              border-radius: 8px;
+              border-radius: 6px;
               font-size: 11px;
               cursor: pointer;
             }
             button:hover {
-              border-color: var(--accent);
-              color: var(--accent);
+              background: var(--vscode-button-hoverBackground);
             }
             .status {
               margin: 8px 0 16px 0;
               padding: 8px 10px;
-              border-radius: 8px;
-              border: 1px solid rgba(34, 197, 94, 0.35);
-              background: rgba(34, 197, 94, 0.08);
+              border-radius: 6px;
+              border: 1px solid var(--vscode-panel-border);
+              background: var(--vscode-editorWidget-background);
               font-size: 12px;
             }
             h4 {
@@ -296,7 +242,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               font-size: 13px;
               text-transform: uppercase;
               letter-spacing: 0.06em;
-              color: var(--muted);
+              color: var(--vscode-descriptionForeground);
             }
             ul {
               margin: 0;
@@ -308,12 +254,17 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             }
             .jump {
               background: transparent;
-              border: 1px solid rgba(245, 158, 11, 0.4);
-              color: var(--accent);
+              border: 1px solid var(--vscode-editorLink-activeForeground);
+              color: var(--vscode-editorLink-activeForeground);
               padding: 2px 6px;
               border-radius: 6px;
               margin-right: 6px;
               font-size: 11px;
+            }
+            .message {
+              font-size: 12px;
+              color: var(--vscode-descriptionForeground);
+              white-space: pre-wrap;
             }
           </style>
         </head>
@@ -328,10 +279,14 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               <button id="stop">Stop</button>
               <button id="runEngineDirect">Run Engine Direct</button>
               <button id="openHome">Open WLH Home</button>
-              <button id="decrypt">Run Decrypt</button>
               <button id="openSettings">Open Settings</button>
             </div>
+            <div class="actions">
+              <button id="scan">Run Full Scan</button>
+              <button id="decrypt">Run Decrypt</button>
+            </div>
             <div class="status">Status: ${escape(this.lastStatus)}</div>
+            ${messageSection}
             <h4>Versions</h4>
             <ul>${versions}</ul>
             <h4>Crashes</h4>
@@ -360,6 +315,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             });
             document.getElementById('openHome').addEventListener('click', () => {
               vscode.postMessage({ type: 'openHome' });
+            });
+            document.getElementById('scan').addEventListener('click', () => {
+              vscode.postMessage({ type: 'scan' });
             });
             document.getElementById('decrypt').addEventListener('click', () => {
               vscode.postMessage({ type: 'decrypt' });
@@ -417,6 +375,7 @@ function runWlh(args: string[]): Promise<string> {
   const resolved = resolveWlhCommand(commandPath, finalArgs);
 
   return new Promise((resolve, reject) => {
+    output.appendLine(`WLH exec: ${resolved.command} ${resolved.args.join(' ')}`);
     execFile(
       resolved.command,
       resolved.args,
@@ -449,6 +408,7 @@ async function scanFastThenFull(filePath: string) {
   output.appendLine(`Scanning ${filePath}`);
   sidebarProvider?.update('Scanning...');
   sidebarProvider?.updateStatus('Scanning...');
+  sidebarProvider?.updateFilePath(filePath);
   try {
     const scanResult = await runWlhJson<{ status: string; jobId?: string }>([
       'scan',
@@ -515,8 +475,17 @@ async function decryptFile(filePath: string) {
       '--jar',
       jarPath
     ]);
-    sidebarProvider?.update(JSON.stringify(result));
-    sidebarProvider?.updateStatus('Decrypt complete');
+    const status = String(result.status || '');
+    output.appendLine(JSON.stringify(result));
+    if (status === 'ok') {
+      sidebarProvider?.update(JSON.stringify(result));
+      sidebarProvider?.updateStatus('Decrypt complete');
+    } else {
+      const message = String(result.message || 'decrypt_failed');
+      vscode.window.showErrorMessage(`WLH: Decrypt failed: ${message}`);
+      sidebarProvider?.update(JSON.stringify(result));
+      sidebarProvider?.updateStatus('Error');
+    }
   } catch (err) {
     const message = (err as Error).message;
     vscode.window.showErrorMessage(`WLH: Decrypt failed: ${message}`);
@@ -627,6 +596,9 @@ export function activate(context: vscode.ExtensionContext) {
     async () => {
       const homePath = resolveDefaultHome();
       await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(homePath));
+    },
+    async (filePath) => {
+      await scanFastThenFull(filePath);
     }
   );
   context.subscriptions.push(
