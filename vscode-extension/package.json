@@ -89,6 +89,11 @@
           "default": "",
           "description": "Path to decrypt jar"
         },
+        "wlh.decrypt.timeoutSeconds": {
+          "type": "number",
+          "default": 600,
+          "description": "Decrypt timeout in seconds"
+        },
         "wlh.commandPath": {
           "type": "string",
           "default": "",

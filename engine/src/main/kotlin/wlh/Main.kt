@@ -567,20 +567,18 @@ private fun runDecrypt(file: String, jar: String, timeoutSeconds: Int): Map<Stri
         return mapOf("status" to "error", "message" to "decrypt_launch_failed")
     }
 
-    val deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeoutSeconds.toLong())
-    while (System.currentTimeMillis() < deadline) {
-        val hasOutput = output.exists() && output.length() > 0L
-        if (!process.isAlive) {
-            return if (hasOutput) {
-                mapOf("status" to "ok", "input" to input.absolutePath, "output" to output.absolutePath)
-            } else {
-                mapOf("status" to "error", "message" to "decrypt_failed", "input" to input.absolutePath, "output" to output.absolutePath)
-            }
-        }
-        Thread.sleep(300)
+    val finished = process.waitFor(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+    if (!finished) {
+        process.destroyForcibly()
+        return mapOf("status" to "error", "message" to "timeout", "input" to input.absolutePath, "output" to output.absolutePath)
     }
-    process.destroyForcibly()
-    return mapOf("status" to "error", "message" to "timeout", "input" to input.absolutePath, "output" to output.absolutePath)
+
+    val hasOutput = output.exists() && output.length() > 0L
+    return if (hasOutput) {
+        mapOf("status" to "ok", "input" to input.absolutePath, "output" to output.absolutePath)
+    } else {
+        mapOf("status" to "error", "message" to "decrypt_failed", "input" to input.absolutePath, "output" to output.absolutePath)
+    }
 }
 
 private fun resolveJava(): String? {

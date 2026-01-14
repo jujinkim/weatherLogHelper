@@ -769,6 +769,7 @@ async function scanFastThenFull(filePath: string) {
 async function decryptFile(filePath: string) {
   const config = vscode.workspace.getConfiguration('wlh');
   const jarPath = config.get<string>('decrypt.jarPath') || '';
+  const timeoutSeconds = Math.max(1, config.get<number>('decrypt.timeoutSeconds') || 600);
   if (!jarPath.trim()) {
     vscode.window.showErrorMessage('WLH: Set wlh.decrypt.jarPath before decrypt.');
     return;
@@ -780,7 +781,9 @@ async function decryptFile(filePath: string) {
       'decrypt',
       filePath,
       '--jar',
-      jarPath
+      jarPath,
+      '--timeout',
+      String(timeoutSeconds)
     ]);
     const status = String(result.status || '');
     const outputPath = String(result.output || '');
