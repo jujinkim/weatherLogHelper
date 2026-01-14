@@ -147,7 +147,22 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   updateFilePath(filePath: string) {
+    if (this.currentResults && this.currentResults.filePath !== filePath) {
+      this.currentResults = undefined;
+      this.packageGroups = [];
+      this.scanPackages = [];
+      this.lastContent = 'No scan results yet.';
+    }
     this.lastFilePath = filePath;
+    this.render();
+  }
+
+  resetForFile(filePath: string, message: string) {
+    this.currentResults = undefined;
+    this.packageGroups = [];
+    this.scanPackages = [];
+    this.lastFilePath = filePath;
+    this.lastContent = message;
     this.render();
   }
 
@@ -688,15 +703,14 @@ async function scanFull(filePath: string) {
 async function refreshSidebarFromActiveEditor() {
   const filePath = resolveActiveFilePath();
   if (!filePath) {
-    sidebarProvider?.update('No active file.');
+    sidebarProvider?.resetForFile('No file selected', 'No active file.');
     sidebarProvider?.updateStatus('Idle');
-    sidebarProvider?.updateFilePath('No file selected');
     return;
   }
   sidebarProvider?.updateFilePath(filePath);
   const resultPath = buildResultFilePath(filePath);
   if (!fs.existsSync(resultPath)) {
-    sidebarProvider?.update('No scan results yet.');
+    sidebarProvider?.resetForFile(filePath, 'No scan results yet.');
     sidebarProvider?.updateStatus('Idle');
     return;
   }
@@ -745,6 +759,7 @@ async function decryptFile(filePath: string) {
           await vscode.window.showTextDocument(doc, { preview: false });
         } catch (err) {
           output.appendLine(`Decrypt open error: ${(err as Error).message}`);
+          vscode.window.showErrorMessage('WLH: Decrypt succeeded but failed to open output file.');
         }
       }
     } else {
