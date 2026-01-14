@@ -126,8 +126,63 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       .replace(/>/g, '&gt;');
     this.view.webview.html = `<!DOCTYPE html>
       <html>
+        <head>
+          <style>
+            :root {
+              --bg: #0f1419;
+              --panel: #1b232c;
+              --panel-2: #0b1116;
+              --accent: #f59e0b;
+              --accent-2: #22c55e;
+              --text: #e5e7eb;
+              --muted: #94a3b8;
+              --border: #2a3642;
+            }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 16px;
+              font-family: "Segoe UI", "Noto Sans", "Apple SD Gothic Neo", sans-serif;
+              color: var(--text);
+              background:
+                radial-gradient(1200px 600px at -20% -20%, rgba(245, 158, 11, 0.12), transparent),
+                radial-gradient(900px 500px at 120% 20%, rgba(34, 197, 94, 0.10), transparent),
+                var(--bg);
+            }
+            .card {
+              background: linear-gradient(180deg, rgba(27, 35, 44, 0.96), rgba(11, 17, 22, 0.96));
+              border: 1px solid var(--border);
+              border-radius: 12px;
+              padding: 16px;
+              box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+            }
+            .title {
+              font-size: 14px;
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+              color: var(--muted);
+            }
+            .status {
+              margin-top: 10px;
+              padding: 10px 12px;
+              background: rgba(245, 158, 11, 0.08);
+              border: 1px solid rgba(245, 158, 11, 0.3);
+              border-radius: 8px;
+              font-size: 12px;
+              color: var(--text);
+            }
+            pre {
+              white-space: pre-wrap;
+              margin: 0;
+              color: var(--text);
+            }
+          </style>
+        </head>
         <body>
-          <pre>${safe}</pre>
+          <div class="card">
+            <div class="title">Weather Log Helper</div>
+            <div class="status">${safe}</div>
+          </div>
         </body>
       </html>`;
   }
@@ -142,7 +197,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       ? results.crashes
           .map(
             (c) =>
-              `<li><button data-line="${c.line}">L${c.line}</button> ${escape(c.preview)}</li>`
+              `<li><button class="jump" data-line="${c.line}">L${c.line}</button> ${escape(
+                c.preview
+              )}</li>`
           )
           .join('')
       : '<li>None</li>';
@@ -155,7 +212,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       ? results.jsonBlocks
           .map(
             (b) =>
-              `<li><button data-line="${b.startLine}">L${b.startLine}</button> ${escape(
+              `<li><button class="jump" data-line="${b.startLine}">L${b.startLine}</button> ${escape(
                 b.preview
               )}</li>`
           )
@@ -164,28 +221,126 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
 
     return `<!DOCTYPE html>
       <html>
+        <head>
+          <style>
+            :root {
+              --bg: #0f1419;
+              --panel: #1b232c;
+              --panel-2: #0b1116;
+              --accent: #f59e0b;
+              --accent-2: #22c55e;
+              --text: #e5e7eb;
+              --muted: #94a3b8;
+              --border: #2a3642;
+            }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 16px;
+              font-family: "Segoe UI", "Noto Sans", "Apple SD Gothic Neo", sans-serif;
+              color: var(--text);
+              background:
+                radial-gradient(1200px 600px at -20% -20%, rgba(245, 158, 11, 0.12), transparent),
+                radial-gradient(900px 500px at 120% 20%, rgba(34, 197, 94, 0.10), transparent),
+                var(--bg);
+            }
+            h3 {
+              margin: 0 0 6px 0;
+              font-size: 16px;
+              letter-spacing: 0.06em;
+              text-transform: uppercase;
+              color: var(--muted);
+            }
+            .card {
+              background: linear-gradient(180deg, rgba(27, 35, 44, 0.96), rgba(11, 17, 22, 0.96));
+              border: 1px solid var(--border);
+              border-radius: 12px;
+              padding: 16px;
+              box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+            }
+            .path {
+              font-size: 12px;
+              color: var(--muted);
+              margin-bottom: 10px;
+              word-break: break-all;
+            }
+            .actions {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 8px;
+              margin: 10px 0 12px 0;
+            }
+            button {
+              background: #111827;
+              border: 1px solid var(--border);
+              color: var(--text);
+              padding: 6px 10px;
+              border-radius: 8px;
+              font-size: 11px;
+              cursor: pointer;
+            }
+            button:hover {
+              border-color: var(--accent);
+              color: var(--accent);
+            }
+            .status {
+              margin: 8px 0 16px 0;
+              padding: 8px 10px;
+              border-radius: 8px;
+              border: 1px solid rgba(34, 197, 94, 0.35);
+              background: rgba(34, 197, 94, 0.08);
+              font-size: 12px;
+            }
+            h4 {
+              margin: 14px 0 6px 0;
+              font-size: 13px;
+              text-transform: uppercase;
+              letter-spacing: 0.06em;
+              color: var(--muted);
+            }
+            ul {
+              margin: 0;
+              padding-left: 16px;
+            }
+            li {
+              margin-bottom: 6px;
+              font-size: 12px;
+            }
+            .jump {
+              background: transparent;
+              border: 1px solid rgba(245, 158, 11, 0.4);
+              color: var(--accent);
+              padding: 2px 6px;
+              border-radius: 6px;
+              margin-right: 6px;
+              font-size: 11px;
+            }
+          </style>
+        </head>
         <body>
-          <h3>WLH Results</h3>
-          <p>${escape(results.filePath)}</p>
-          <div>
-            <button id="status">Status</button>
-            <button id="start">Start</button>
-            <button id="restart">Restart</button>
-            <button id="stop">Stop</button>
-            <button id="runEngineDirect">Run Engine Direct</button>
-            <button id="openHome">Open WLH Home</button>
-            <button id="decrypt">Run Decrypt</button>
-            <button id="openSettings">Open Settings</button>
+          <div class="card">
+            <h3>Weather Log Helper</h3>
+            <div class="path">${escape(results.filePath)}</div>
+            <div class="actions">
+              <button id="status">Status</button>
+              <button id="start">Start</button>
+              <button id="restart">Restart</button>
+              <button id="stop">Stop</button>
+              <button id="runEngineDirect">Run Engine Direct</button>
+              <button id="openHome">Open WLH Home</button>
+              <button id="decrypt">Run Decrypt</button>
+              <button id="openSettings">Open Settings</button>
+            </div>
+            <div class="status">Status: ${escape(this.lastStatus)}</div>
+            <h4>Versions</h4>
+            <ul>${versions}</ul>
+            <h4>Crashes</h4>
+            <ul>${crashes}</ul>
+            <h4>Tags</h4>
+            <ul>${tags}</ul>
+            <h4>JSON Blocks</h4>
+            <ul>${blocks}</ul>
           </div>
-          <p><strong>Status:</strong> ${escape(this.lastStatus)}</p>
-          <h4>Versions</h4>
-          <ul>${versions}</ul>
-          <h4>Crashes</h4>
-          <ul>${crashes}</ul>
-          <h4>Tags</h4>
-          <ul>${tags}</ul>
-          <h4>JSON Blocks</h4>
-          <ul>${blocks}</ul>
           <script>
             const vscode = acquireVsCodeApi();
             document.getElementById('status').addEventListener('click', () => {
