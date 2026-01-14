@@ -560,7 +560,7 @@ private fun runDecrypt(file: String, jar: String, timeoutSeconds: Int): Map<Stri
     }
 
     val process = try {
-        ProcessBuilder(listOf(javaCmd, "-jar", jar, input.absolutePath))
+        ProcessBuilder(listOf(javaCmd, "-jar", jar, input.absolutePath, output.absolutePath))
             .redirectErrorStream(true)
             .start()
     } catch (ex: Exception) {
