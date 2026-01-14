@@ -695,7 +695,7 @@ private class EngineHome(private val home: Path) {
 
     fun readConfig(mapper: ObjectMapper): EngineConfig {
         if (!Files.exists(configFile)) {
-            return EngineConfig(emptyList(), emptyList())
+            return EngineConfig(emptyList(), emptyList(), true)
         }
         return try {
             val node = mapper.readTree(configFile.toFile())
