@@ -310,9 +310,10 @@ private fun scanFatalCrashes(
     val crashLines = mutableSetOf<Long>()
     val crashMarker = "FATAL EXCEPTION:"
     val appCrashedMarker = "APP CRASHED"
+    val anrRegex = Regex("ANR in\\s+([0-9A-Za-z._-]+)")
     val processRegex = Regex("Process:\\s*([0-9A-Za-z._-]+)")
 
-    val rgResult = runRgFatalScan(file, packageFilters, processRegex, crashMarker, appCrashedMarker)
+    val rgResult = runRgFatalScan(file, packageFilters, processRegex, crashMarker, appCrashedMarker, anrRegex)
     if (rgResult != null) {
         crashes.addAll(rgResult)
         job.progress = progressCap
@@ -407,6 +408,26 @@ private fun scanFatalCrashes(
                         }
                     }
                 }
+            } else {
+                val anrMatch = anrRegex.find(line)
+                if (anrMatch != null) {
+                    val packageName = anrMatch.groupValues[1].lowercase(Locale.ROOT)
+                    if (packageFilters.contains(packageName)) {
+                        val anrLineNumber = lineNumber
+                        val blockLines = mutableListOf(line)
+                        var added = 0
+                        while (added < 5) {
+                            val next = reader.readLine() ?: break
+                            lineNumber += 1
+                            processedBytes += next.length + 1
+                            blockLines.add(next)
+                            added += 1
+                        }
+                        if (crashLines.add(anrLineNumber)) {
+                            crashes.add(CrashEntry(anrLineNumber, blockLines.joinToString("\n")))
+                        }
+                    }
+                }
             }
 
             if (lineNumber % 2000L == 0L) {
@@ -423,9 +444,10 @@ private fun runRgFatalScan(
     packageFilters: List<String>,
     processRegex: Regex,
     crashMarker: String,
-    appCrashedMarker: String
+    appCrashedMarker: String,
+    anrRegex: Regex
 ): List<CrashEntry>? {
-    val args = mutableListOf("rg", "-n", "-A", "6", crashMarker, "-e", appCrashedMarker)
+    val args = mutableListOf("rg", "-n", "-A", "6", crashMarker, "-e", appCrashedMarker, "-e", "ANR in ")
     args.add(file.absolutePath)
 
     val process = try {
@@ -445,7 +467,7 @@ private fun runRgFatalScan(
     process.inputStream.bufferedReader().useLines { lines ->
         lines.forEach { raw ->
             if (raw == "--") {
-                processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, appCrashedMarker, crashes, crashLines)
+                processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, appCrashedMarker, anrRegex, crashes, crashLines)
                 blockLines.clear()
                 return@forEach
             }
@@ -456,7 +478,7 @@ private fun runRgFatalScan(
         }
     }
     if (blockLines.isNotEmpty()) {
-        processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, appCrashedMarker, crashes, crashLines)
+        processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, appCrashedMarker, anrRegex, crashes, crashLines)
     }
 
     return if (process.waitFor() == 0) crashes else null
@@ -468,6 +490,7 @@ private fun processFatalBlock(
     processRegex: Regex,
     crashMarker: String,
     appCrashedMarker: String,
+    anrRegex: Regex,
     crashes: MutableList<CrashEntry>,
     crashLines: MutableSet<Long>
 ) {
@@ -530,6 +553,27 @@ private fun processFatalBlock(
     }
     if (crashLines.add(crashLineNumber)) {
         crashes.add(CrashEntry(crashLineNumber, block.joinToString("\n")))
+    }
+
+    val anrIndex = blockLines.indexOfFirst { anrRegex.containsMatchIn(it.second) }
+    if (anrIndex == -1) {
+        return
+    }
+    val (anrLineNumber, anrLine) = blockLines[anrIndex]
+    val match = anrRegex.find(anrLine) ?: return
+    val packageName = match.groupValues[1].lowercase(Locale.ROOT)
+    if (!packageFilters.contains(packageName)) {
+        return
+    }
+    val anrBlock = mutableListOf(anrLine)
+    var added = 0
+    for (i in anrIndex + 1 until blockLines.size) {
+        if (added >= 5) break
+        anrBlock.add(blockLines[i].second)
+        added += 1
+    }
+    if (crashLines.add(anrLineNumber)) {
+        crashes.add(CrashEntry(anrLineNumber, anrBlock.joinToString("\n")))
     }
 }
 
