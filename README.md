@@ -81,13 +81,14 @@ WLH resolves the update base URL in this order:
 2. `WLH_HOME/config/wlh.json` with `updateBaseUrl`
 
 Environment variables are not used for base URL resolution.
+`WLH_HOME` is resolved by `--home` or the default `~/.wlh`/`%USERPROFILE%\\.wlh`.
 
 ## Common Mistakes
 
 - Running `npm` at the repository root (npm is only for `vscode-extension/`).
 - Expecting Gradle to build editor plugins (Gradle is only for `engine/`).
 - Mixing build systems across components.
-- Relying on environment variables for `WLH_HOME` or base URL (use CLI flags or config).
+- Assuming environment variables are used for `WLH_HOME` or base URL (they are ignored).
 
 ## Developer Workflow Summary
 

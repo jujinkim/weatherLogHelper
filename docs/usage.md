@@ -20,4 +20,4 @@ Default locations:
 - Windows: `%USERPROFILE%\.wlh`
 - Linux/macOS: `~/.wlh`
 
-Override using `--home` or `WLH_HOME`.
+Override using `--home` only. Environment variables are ignored.
