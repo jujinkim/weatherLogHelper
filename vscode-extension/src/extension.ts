@@ -223,6 +223,29 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   }
 }
 
+function normalizeCommandPath(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1);
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function resolveWlhCommand(commandPath: string, args: string[]): { command: string; args: string[] } {
+  const normalized = normalizeCommandPath(commandPath);
+  const lower = normalized.toLowerCase();
+  if (lower.endsWith('.sh')) {
+    return { command: 'bash', args: [normalized, ...args] };
+  }
+  if (lower.endsWith('.bat') || lower.endsWith('.cmd')) {
+    return { command: 'cmd', args: ['/c', normalized, ...args] };
+  }
+  return { command: normalized, args };
+}
+
 function runWlh(args: string[]): Promise<string> {
   const config = vscode.workspace.getConfiguration('wlh');
   const baseUrl = config.get<string>('update.baseUrl');
@@ -236,18 +259,29 @@ function runWlh(args: string[]): Promise<string> {
     finalArgs.unshift(baseUrl);
     finalArgs.unshift('--base-url');
   }
+  const resolved = resolveWlhCommand(commandPath, finalArgs);
 
   return new Promise((resolve, reject) => {
-    execFile(commandPath, finalArgs, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(
+      resolved.command,
+      resolved.args,
+      { maxBuffer: 10 * 1024 * 1024 },
+      (err, stdout, stderr) => {
       if (stderr) {
         output.appendLine(stderr.trim());
       }
       if (err) {
+        output.appendLine(`WLH exec error: ${err.message}`);
+        if (stdout && stdout.trim().length > 0) {
+          resolve(stdout.trim());
+          return;
+        }
         reject(err);
         return;
       }
       resolve(stdout.trim());
-    });
+    }
+    );
   });
 }
 
