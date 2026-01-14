@@ -280,10 +280,11 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               font-family: var(--vscode-font-family, "Segoe UI", "Noto Sans", sans-serif);
               color: var(--vscode-foreground);
               background: var(--vscode-sideBar-background);
+              font-size: 13px;
             }
             h3 {
               margin: 0 0 6px 0;
-              font-size: 16px;
+              font-size: 17px;
               color: var(--vscode-foreground);
             }
             .card {
@@ -316,7 +317,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               color: var(--vscode-button-foreground);
               padding: 6px 10px;
               border-radius: 6px;
-              font-size: 11px;
+              font-size: 12px;
               cursor: pointer;
             }
             button:hover {
@@ -328,11 +329,11 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               border-radius: 6px;
               border: 1px solid var(--vscode-panel-border);
               background: var(--vscode-editorWidget-background);
-              font-size: 12px;
+              font-size: 13px;
             }
             h4 {
               margin: 14px 0 6px 0;
-              font-size: 13px;
+              font-size: 14px;
               text-transform: uppercase;
               letter-spacing: 0.06em;
               color: var(--vscode-descriptionForeground);
@@ -343,7 +344,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             }
             li {
               margin-bottom: 6px;
-              font-size: 12px;
+              font-size: 13px;
               white-space: pre-wrap;
             }
             .jump {
@@ -353,7 +354,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               padding: 2px 6px;
               border-radius: 6px;
               margin-right: 6px;
-              font-size: 11px;
+              font-size: 12px;
             }
             .copy {
               background: transparent;
@@ -362,11 +363,11 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               padding: 0 4px;
               border-radius: 6px;
               margin-right: 6px;
-              font-size: 11px;
+              font-size: 12px;
               line-height: 1.4;
             }
             .message {
-              font-size: 12px;
+              font-size: 13px;
               color: var(--vscode-descriptionForeground);
               white-space: pre-wrap;
             }
@@ -376,7 +377,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               border: 1px solid var(--vscode-dropdown-border);
               border-radius: 6px;
               padding: 6px 8px;
-              font-size: 12px;
+              font-size: 13px;
               width: 100%;
             }
           </style>

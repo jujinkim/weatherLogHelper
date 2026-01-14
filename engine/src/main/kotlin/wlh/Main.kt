@@ -328,8 +328,10 @@ private fun scanFatalCrashes(
 
     file.bufferedReader().use { reader ->
         var carry: String? = null
+        var carryLineNumber = 0L
         while (true) {
-            val line = if (carry != null) {
+            val fromCarry = carry != null
+            val line = if (fromCarry) {
                 val value = carry
                 carry = null
                 value
@@ -337,8 +339,12 @@ private fun scanFatalCrashes(
                 reader.readLine()
             } ?: break
 
-            lineNumber += 1
-            processedBytes += line.length + 1
+            if (fromCarry) {
+                lineNumber = carryLineNumber
+            } else {
+                lineNumber += 1
+                processedBytes += line.length + 1
+            }
 
             if (line.contains(crashMarker)) {
                 val fatalLineNumber = lineNumber
@@ -364,6 +370,7 @@ private fun scanFatalCrashes(
                                 blockLines.add(next)
                             } else {
                                 carry = next
+                                carryLineNumber = lineNumber
                                 break
                             }
                         }
@@ -399,6 +406,7 @@ private fun scanFatalCrashes(
                                 added += 1
                             } else {
                                 carry = next
+                                carryLineNumber = lineNumber
                                 break
                             }
                         }
