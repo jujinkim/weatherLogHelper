@@ -596,7 +596,7 @@ private fun findMatchingPackage(line: String, packageFilters: List<String>): Str
 private fun formatCrashLines(lines: List<String>): List<String> {
     if (lines.isEmpty()) return lines
     val tokenRegex = Regex("^[0-9:\\-\\.]+$")
-    val tokensPerLine = lines.map { it.trim().split(Regex("\\s+")) }
+    val tokensPerLine = lines.map { it.trim().split(Regex("[\\t ]+")) }
     val hasFiveTokens = tokensPerLine.all { it.size >= 6 }
     if (!hasFiveTokens) return lines
     val leadingTokensMatch = tokensPerLine.all { parts ->
