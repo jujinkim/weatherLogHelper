@@ -229,7 +229,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             : scanPackagesLower.filter((pkg) => previewLower.includes(pkg));
           const matchedAttr = matched.length > 0 ? matched.join(',') : '';
           const lines = entry.preview.split(/\r?\n/).length || 1;
-          const safeLines = Math.min(Math.max(lines, 1), 12);
+          const safeLines = Math.min(Math.max(lines + 1, 2), 12);
           const preview = escape(entry.preview);
           return (
             `<li data-packages="${escape(matchedAttr)}">` +
@@ -352,6 +352,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               font-size: 12px;
               line-height: 1.4;
               overflow-x: auto;
+              overflow-y: hidden;
               white-space: pre;
             }
             .jump {
