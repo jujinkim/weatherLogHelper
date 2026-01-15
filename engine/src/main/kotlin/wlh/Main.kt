@@ -457,7 +457,7 @@ private fun runRgFatalScan(
     appCrashedMarker: String,
     anrRegex: Regex
 ): List<CrashEntry>? {
-    val args = mutableListOf("rg", "-n", "-A", "6", crashMarker, "-e", appCrashedMarker, "-e", "ANR in ")
+    val args = mutableListOf("rg", "--text", "-n", "-A", "6", crashMarker, "-e", appCrashedMarker, "-e", "ANR in ")
     args.add(file.absolutePath)
 
     val process = try {
@@ -694,6 +694,7 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
 private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<VersionEntry>? {
     val args = mutableListOf(
         "rg",
+        "--text",
         "-n",
         "-A",
         "30",
