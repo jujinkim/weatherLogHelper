@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.system.exitProcess
 
-data class CrashEntry(val line: Long, val preview: String)
+data class CrashEntry(val line: Long, val preview: String, val packageName: String)
 
 data class VersionEntry(val line: Long, val label: String)
 
@@ -353,8 +353,8 @@ private fun scanFatalCrashes(
                 val processLine = reader.readLine() ?: break
                 lineNumber += 1
                 processedBytes += processLine.length + 1
-                val processLineLower = processLine.lowercase(Locale.ROOT)
-                if (processLine.contains("Process:") && packageFilters.any { processLineLower.contains(it) }) {
+                val matchedPackage = findMatchingPackage(processLine, packageFilters)
+                if (processLine.contains("Process:") && matchedPackage != null) {
                     val blockLines = mutableListOf(fatalLine, processLine)
                     var lookahead = 0
                     while (lookahead < 3) {
@@ -375,7 +375,7 @@ private fun scanFatalCrashes(
                     }
                     if (crashLines.add(fatalLineNumber)) {
                         val formatted = formatCrashLines(blockLines)
-                        crashes.add(CrashEntry(fatalLineNumber, formatted.joinToString("\n")))
+                        crashes.add(CrashEntry(fatalLineNumber, formatted.joinToString("\n"), matchedPackage))
                     }
                     if (carry != null) {
                         continue
@@ -411,7 +411,7 @@ private fun scanFatalCrashes(
                         }
                         if (crashLines.add(crashLineNumber)) {
                             val formatted = formatCrashLines(blockLines)
-                            crashes.add(CrashEntry(crashLineNumber, formatted.joinToString("\n")))
+                            crashes.add(CrashEntry(crashLineNumber, formatted.joinToString("\n"), packageName))
                         }
                         if (carry != null) {
                             continue
@@ -435,7 +435,7 @@ private fun scanFatalCrashes(
                         }
                         if (crashLines.add(anrLineNumber)) {
                             val formatted = formatCrashLines(blockLines)
-                            crashes.add(CrashEntry(anrLineNumber, formatted.joinToString("\n")))
+                            crashes.add(CrashEntry(anrLineNumber, formatted.joinToString("\n"), packageName))
                         }
                     }
                 }
@@ -507,8 +507,8 @@ private fun processFatalBlock(
     if (fatalIndex != -1 && fatalIndex + 1 < blockLines.size) {
         val (fatalLineNumber, fatalLine) = blockLines[fatalIndex]
         val processLine = blockLines[fatalIndex + 1].second
-        val processLineLower = processLine.lowercase(Locale.ROOT)
-        if (!processLine.contains("Process:") || !packageFilters.any { processLineLower.contains(it) }) {
+        val matchedPackage = findMatchingPackage(processLine, packageFilters)
+        if (!processLine.contains("Process:") || matchedPackage == null) {
             return
         }
         val block = mutableListOf(fatalLine, processLine)
@@ -525,7 +525,7 @@ private fun processFatalBlock(
         }
         if (crashLines.add(fatalLineNumber)) {
             val formatted = formatCrashLines(block)
-            crashes.add(CrashEntry(fatalLineNumber, formatted.joinToString("\n")))
+            crashes.add(CrashEntry(fatalLineNumber, formatted.joinToString("\n"), matchedPackage))
         }
         return
     }
@@ -562,7 +562,7 @@ private fun processFatalBlock(
     }
     if (crashLines.add(crashLineNumber)) {
         val formatted = formatCrashLines(block)
-        crashes.add(CrashEntry(crashLineNumber, formatted.joinToString("\n")))
+        crashes.add(CrashEntry(crashLineNumber, formatted.joinToString("\n"), packageName))
     }
 
     val anrIndex = blockLines.indexOfFirst { anrRegex.containsMatchIn(it.second) }
@@ -584,8 +584,13 @@ private fun processFatalBlock(
     }
     if (crashLines.add(anrLineNumber)) {
         val formatted = formatCrashLines(anrBlock)
-        crashes.add(CrashEntry(anrLineNumber, formatted.joinToString("\n")))
+        crashes.add(CrashEntry(anrLineNumber, formatted.joinToString("\n"), anrPackage))
     }
+}
+
+private fun findMatchingPackage(line: String, packageFilters: List<String>): String? {
+    val lower = line.lowercase(Locale.ROOT)
+    return packageFilters.firstOrNull { lower.contains(it) }
 }
 
 private fun formatCrashLines(lines: List<String>): List<String> {

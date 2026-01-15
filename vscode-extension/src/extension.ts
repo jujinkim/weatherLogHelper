@@ -9,6 +9,7 @@ const output = vscode.window.createOutputChannel('WLH');
 type CrashEntry = {
   line: number;
   preview: string;
+  packageName?: string;
 };
 
 type VersionEntry = {
@@ -49,7 +50,21 @@ function normalizeResults(raw: Partial<ScanResults> & { file?: string }): ScanRe
   return {
     filePath: raw.filePath || raw.file || 'Unknown file',
     versions: normalizeVersions(raw.versions),
-    crashes: Array.isArray(raw.crashes) ? raw.crashes : []
+    crashes: Array.isArray(raw.crashes)
+      ? raw.crashes
+          .map((entry) => {
+            if (entry && typeof entry === 'object') {
+              const maybe = entry as { line?: unknown; preview?: unknown; packageName?: unknown };
+              return {
+                line: typeof maybe.line === 'number' ? maybe.line : 0,
+                preview: typeof maybe.preview === 'string' ? maybe.preview : '',
+                packageName: typeof maybe.packageName === 'string' ? maybe.packageName : undefined
+              };
+            }
+            return { line: 0, preview: '' };
+          })
+          .filter((item) => item.line > 0 || item.preview.length > 0)
+      : []
   };
 }
 
@@ -243,11 +258,12 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       entries.length
         ? entries
             .map((entry) => {
-              const previewLower = entry.preview.toLowerCase();
-              const matched = scanPackages.filter((pkg) =>
-                previewLower.includes(pkg.toLowerCase())
-              );
-              const matchedAttr = matched.join(',');
+              const matched = entry.packageName
+                ? [entry.packageName]
+                : scanPackages.filter((pkg) =>
+                    entry.preview.toLowerCase().includes(pkg.toLowerCase())
+                  );
+              const matchedAttr = matched.length > 0 ? matched.join(',') : scanPackages.join(',');
               return `<li data-packages="${escape(matchedAttr)}"><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(
                 entry.preview
               )}</li>`;
