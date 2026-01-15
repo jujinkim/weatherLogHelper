@@ -15,6 +15,7 @@ type CrashEntry = {
 type VersionEntry = {
   line: number;
   label: string;
+  packageName?: string;
 };
 
 type ScanResults = {
@@ -28,25 +29,26 @@ type EngineConfig = {
 };
 
 function normalizeResults(raw: Partial<ScanResults> & { file?: string }): ScanResults {
-  const normalizeVersions = (value: unknown): Array<VersionEntry | string> => {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return value
-      .map((entry) => {
-        if (typeof entry === 'string') {
-          return entry;
-        }
-        if (entry && typeof entry === 'object') {
-          const maybe = entry as { line?: unknown; label?: unknown };
-          const line = typeof maybe.line === 'number' ? maybe.line : 0;
-          const label = typeof maybe.label === 'string' ? maybe.label : '';
-          return { line, label };
-        }
-        return '';
-      })
-      .filter((entry) => (typeof entry === 'string' ? entry.length > 0 : entry.label.length > 0));
-  };
+    const normalizeVersions = (value: unknown): Array<VersionEntry | string> => {
+      if (!Array.isArray(value)) {
+        return [];
+      }
+      return value
+        .map((entry) => {
+          if (typeof entry === 'string') {
+            return entry;
+          }
+          if (entry && typeof entry === 'object') {
+            const maybe = entry as { line?: unknown; label?: unknown; packageName?: unknown };
+            const line = typeof maybe.line === 'number' ? maybe.line : 0;
+            const label = typeof maybe.label === 'string' ? maybe.label : '';
+            const packageName = typeof maybe.packageName === 'string' ? maybe.packageName : undefined;
+            return { line, label, packageName };
+          }
+          return '';
+        })
+        .filter((entry) => (typeof entry === 'string' ? entry.length > 0 : entry.label.length > 0));
+    };
   return {
     filePath: raw.filePath || raw.file || 'Unknown file',
     versions: normalizeVersions(raw.versions),
@@ -238,12 +240,13 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             }
             const entry = v as VersionEntry;
             const label = entry.label ?? '';
+            const pkg = entry.packageName ? entry.packageName.toLowerCase() : '';
             return entry.line > 0
-              ? `<li><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(label)}</li>`
-              : `<li>${escape(label)}</li>`;
+              ? `<li data-packages="${escape(pkg)}"><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(label)}</li>`
+              : `<li data-packages="${escape(pkg)}">${escape(label)}</li>`;
           })
           .join('')
-      : '<li>None</li>';
+      : '<li data-empty="1">No version log</li>';
     const scanPackagesLower = scanPackages.map((pkg) => pkg.toLowerCase());
     const renderEntries = (entries: CrashEntry[], emptyText: string) => {
       if (entries.length === 0) {
@@ -421,7 +424,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               `}
             </div>
             <h4>Versions</h4>
-            <ul>${versions}</ul>
+            <ul id="versionList">${versions}</ul>
             <h4>Crashes</h4>
             <ul id="crashList">${renderEntries(crashEntries, 'No crash log')}</ul>
             <h4>ANR</h4>
@@ -466,7 +469,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             if (packageSelect) {
               const applyFilter = () => {
                 const value = packageSelect.value;
-                const lists = ['crashList', 'anrList'];
+                const lists = ['versionList', 'crashList', 'anrList'];
                 lists.forEach((id) => {
                   const items = Array.from(document.querySelectorAll('#' + id + ' li'));
                   let visible = 0;

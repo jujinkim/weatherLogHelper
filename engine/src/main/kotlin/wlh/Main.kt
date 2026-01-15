@@ -27,7 +27,7 @@ import kotlin.system.exitProcess
 
 data class CrashEntry(val line: Long, val preview: String, val packageName: String)
 
-data class VersionEntry(val line: Long, val label: String)
+data class VersionEntry(val line: Long, val label: String, val packageName: String)
 
 data class ScanResult(
     val file: String,
@@ -596,7 +596,7 @@ private fun findMatchingPackage(line: String, packageFilters: List<String>): Str
 private fun formatCrashLines(lines: List<String>): List<String> {
     if (lines.isEmpty()) return lines
     val tokenRegex = Regex("^[0-9:\\-\\.]+$")
-    val tokensPerLine = lines.map { it.split('\t') }
+    val tokensPerLine = lines.map { it.trim().split(Regex("\\s+")) }
     val hasFiveTokens = tokensPerLine.all { it.size >= 6 }
     if (!hasFiveTokens) return lines
     val leadingTokensMatch = tokensPerLine.all { parts ->
@@ -673,7 +673,7 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
                                 append(" [System]")
                             }
                         }
-                        versions.add(VersionEntry(headerLine, label))
+                        versions.add(VersionEntry(headerLine, label, packageName))
                     }
                 }
             } else {
@@ -701,7 +701,7 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
                         }
                         if (versionCode != null && versionName != null) {
                             val label = "${versionName} (${versionCode})"
-                            versions.add(VersionEntry(headerLine, label))
+                            versions.add(VersionEntry(headerLine, label, packageName))
                         }
                     }
                 }
@@ -754,6 +754,7 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
     var altVersionCode: String? = null
     var altVersionName: String? = null
     var altHeaderLine: Long? = null
+    var altPackageName: String? = null
 
     fun flush() {
         if (currentPackage != null && versionCode != null && versionName != null && headerLineNumber != null) {
@@ -766,7 +767,7 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
                     append(" [System]")
                 }
             }
-            versions.add(VersionEntry(headerLineNumber!!, label))
+            versions.add(VersionEntry(headerLineNumber!!, label, currentPackage))
         }
         active = false
         remaining = 0
@@ -786,13 +787,14 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
                 }
                 if (altActive) {
                     if (altHeaderLine != null && altVersionCode != null && altVersionName != null) {
-                        versions.add(VersionEntry(altHeaderLine!!, "${altVersionName} (${altVersionCode})"))
+                        versions.add(VersionEntry(altHeaderLine!!, "${altVersionName} (${altVersionCode})", altPackageName ?: ""))
                     }
                     altActive = false
                     altRemaining = 0
                     altVersionCode = null
                     altVersionName = null
                     altHeaderLine = null
+                    altPackageName = null
                 }
                 return@forEach
             }
@@ -806,13 +808,14 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
                 }
                 if (altActive) {
                     if (altHeaderLine != null && altVersionCode != null && altVersionName != null) {
-                        versions.add(VersionEntry(altHeaderLine!!, "${altVersionName} (${altVersionCode})"))
+                        versions.add(VersionEntry(altHeaderLine!!, "${altVersionName} (${altVersionCode})", altPackageName ?: ""))
                     }
                     altActive = false
                     altRemaining = 0
                     altVersionCode = null
                     altVersionName = null
                     altHeaderLine = null
+                    altPackageName = null
                 }
                 val packageName = headerMatch.groupValues[1].lowercase(Locale.ROOT)
                 if (packageFilters.contains(packageName)) {
@@ -831,6 +834,7 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
                         altActive = true
                         altRemaining = 3
                         altHeaderLine = lineNumber
+                        altPackageName = packageName
                         altVersionCode = null
                         altVersionName = null
                     }
@@ -845,13 +849,14 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
                 altRemaining -= 1
                 if (altRemaining == 0 || (altVersionCode != null && altVersionName != null)) {
                     if (altHeaderLine != null && altVersionCode != null && altVersionName != null) {
-                        versions.add(VersionEntry(altHeaderLine!!, "${altVersionName} (${altVersionCode})"))
+                        versions.add(VersionEntry(altHeaderLine!!, "${altVersionName} (${altVersionCode})", altPackageName ?: ""))
                     }
                     altActive = false
                     altRemaining = 0
                     altVersionCode = null
                     altVersionName = null
                     altHeaderLine = null
+                    altPackageName = null
                 }
             }
             if (!active || remaining <= 0) {
