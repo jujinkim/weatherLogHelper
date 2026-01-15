@@ -351,33 +351,33 @@ private fun scanFatalCrashes(
                 val processLine = reader.readLine() ?: break
                 lineNumber += 1
                 processedBytes += processLine.length + 1
-                val packageName = extractProcessPackage(processLine)?.lowercase(Locale.ROOT)
-                if (packageName != null && packageFilters.contains(packageName)) {
-                        val blockLines = mutableListOf(fatalLine, processLine)
-                        var lookahead = 0
-                        while (lookahead < 5) {
-                            val next = reader.readLine()
-                            if (next == null) {
-                                break
-                            }
-                            lineNumber += 1
-                            processedBytes += next.length + 1
-                            lookahead += 1
-                            if (next.contains("AndroidRuntime", ignoreCase = true)) {
-                                blockLines.add(next)
-                            } else {
-                                carry = next
-                                carryLineNumber = lineNumber
-                                break
-                            }
+                val processLineLower = processLine.lowercase(Locale.ROOT)
+                if (processLine.contains("Process:") && packageFilters.any { processLineLower.contains(it) }) {
+                    val blockLines = mutableListOf(fatalLine, processLine)
+                    var lookahead = 0
+                    while (lookahead < 5) {
+                        val next = reader.readLine()
+                        if (next == null) {
+                            break
                         }
-                        if (crashLines.add(fatalLineNumber)) {
-                            crashes.add(CrashEntry(fatalLineNumber, blockLines.joinToString("\n")))
-                        }
-                        if (carry != null) {
-                            continue
+                        lineNumber += 1
+                        processedBytes += next.length + 1
+                        lookahead += 1
+                        if (next.contains("AndroidRuntime", ignoreCase = true)) {
+                            blockLines.add(next)
+                        } else {
+                            carry = next
+                            carryLineNumber = lineNumber
+                            break
                         }
                     }
+                    if (crashLines.add(fatalLineNumber)) {
+                        crashes.add(CrashEntry(fatalLineNumber, blockLines.joinToString("\n")))
+                    }
+                    if (carry != null) {
+                        continue
+                    }
+                }
             } else if (line.contains(appCrashedMarker)) {
                 val crashLineNumber = lineNumber
                 val crashLine = line
@@ -502,8 +502,8 @@ private fun processFatalBlock(
     if (fatalIndex != -1 && fatalIndex + 1 < blockLines.size) {
         val (fatalLineNumber, fatalLine) = blockLines[fatalIndex]
         val processLine = blockLines[fatalIndex + 1].second
-        val packageName = extractProcessPackage(processLine)?.lowercase(Locale.ROOT)
-        if (packageName == null || !packageFilters.contains(packageName)) {
+        val processLineLower = processLine.lowercase(Locale.ROOT)
+        if (!processLine.contains("Process:") || !packageFilters.any { processLineLower.contains(it) }) {
             return
         }
         val block = mutableListOf(fatalLine, processLine)
@@ -580,12 +580,8 @@ private fun processFatalBlock(
     }
 }
 
-private fun extractProcessPackage(line: String): String? {
-    val idx = line.indexOf("Process:", ignoreCase = true)
-    if (idx == -1) return null
-    val rest = line.substring(idx + "Process:".length).trim()
-    if (rest.isEmpty()) return null
-    return rest.split(Regex("[,\\s]+")).firstOrNull()?.takeIf { it.isNotBlank() }
+private fun containsPackage(textLower: String, packageFilters: List<String>): Boolean {
+    return packageFilters.any { textLower.contains(it) }
 }
 
 private fun scanPackageVersions(file: File, config: EngineConfig): List<VersionEntry> {
