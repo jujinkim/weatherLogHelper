@@ -372,7 +372,8 @@ private fun scanFatalCrashes(
                         }
                     }
                     if (crashLines.add(fatalLineNumber)) {
-                        crashes.add(CrashEntry(fatalLineNumber, blockLines.joinToString("\n")))
+                        val formatted = formatCrashLines(blockLines)
+                        crashes.add(CrashEntry(fatalLineNumber, formatted.joinToString("\n")))
                     }
                     if (carry != null) {
                         continue
@@ -407,7 +408,8 @@ private fun scanFatalCrashes(
                             }
                         }
                         if (crashLines.add(crashLineNumber)) {
-                            crashes.add(CrashEntry(crashLineNumber, blockLines.joinToString("\n")))
+                            val formatted = formatCrashLines(blockLines)
+                            crashes.add(CrashEntry(crashLineNumber, formatted.joinToString("\n")))
                         }
                         if (carry != null) {
                             continue
@@ -430,7 +432,8 @@ private fun scanFatalCrashes(
                             added += 1
                         }
                         if (crashLines.add(anrLineNumber)) {
-                            crashes.add(CrashEntry(anrLineNumber, blockLines.joinToString("\n")))
+                            val formatted = formatCrashLines(blockLines)
+                            crashes.add(CrashEntry(anrLineNumber, formatted.joinToString("\n")))
                         }
                     }
                 }
@@ -519,7 +522,8 @@ private fun processFatalBlock(
             }
         }
         if (crashLines.add(fatalLineNumber)) {
-            crashes.add(CrashEntry(fatalLineNumber, block.joinToString("\n")))
+            val formatted = formatCrashLines(block)
+            crashes.add(CrashEntry(fatalLineNumber, formatted.joinToString("\n")))
         }
         return
     }
@@ -555,7 +559,8 @@ private fun processFatalBlock(
         }
     }
     if (crashLines.add(crashLineNumber)) {
-        crashes.add(CrashEntry(crashLineNumber, block.joinToString("\n")))
+        val formatted = formatCrashLines(block)
+        crashes.add(CrashEntry(crashLineNumber, formatted.joinToString("\n")))
     }
 
     val anrIndex = blockLines.indexOfFirst { anrRegex.containsMatchIn(it.second) }
@@ -576,12 +581,24 @@ private fun processFatalBlock(
         anrAdded += 1
     }
     if (crashLines.add(anrLineNumber)) {
-        crashes.add(CrashEntry(anrLineNumber, anrBlock.joinToString("\n")))
+        val formatted = formatCrashLines(anrBlock)
+        crashes.add(CrashEntry(anrLineNumber, formatted.joinToString("\n")))
     }
 }
 
-private fun containsPackage(textLower: String, packageFilters: List<String>): Boolean {
-    return packageFilters.any { textLower.contains(it) }
+private fun formatCrashLines(lines: List<String>): List<String> {
+    if (lines.isEmpty()) return lines
+    val tokenRegex = Regex("^[0-9:\\-\\.]+$")
+    val tokensPerLine = lines.map { it.split('\t') }
+    val hasFiveTokens = tokensPerLine.all { it.size >= 6 }
+    if (!hasFiveTokens) return lines
+    val leadingTokensMatch = tokensPerLine.all { parts ->
+        parts.take(5).all { tokenRegex.matches(it) }
+    }
+    if (!leadingTokensMatch) return lines
+    return tokensPerLine.map { parts ->
+        parts.drop(5).joinToString("\t")
+    }
 }
 
 private fun scanPackageVersions(file: File, config: EngineConfig): List<VersionEntry> {
