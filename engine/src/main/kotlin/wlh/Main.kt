@@ -619,7 +619,7 @@ private fun scanPackageVersionsStream(file: File, packageFilters: Set<String>): 
     val mPackageRegex = Regex("mPackageName='([^']+)'")
     val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
     val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
-    val versionCodeAltRegex = Regex("(?:Version|Vertion)Code:\\s*([0-9]+)", RegexOption.IGNORE_CASE)
+    val versionCodeAltRegex = Regex("VersionCode:\\s*([0-9]+)", RegexOption.IGNORE_CASE)
     val versionNameAltRegex = Regex("VersionName:\\s*([0-9.]+)", RegexOption.IGNORE_CASE)
     file.bufferedReader().use { reader ->
         var lineNumber = 0L
@@ -730,7 +730,7 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
     val mPackageRegex = Regex("mPackageName='([^']+)'")
     val versionCodeRegex = Regex("versionCode\\s*[:=]\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
     val versionNameRegex = Regex("versionName\\s*[:=]\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
-    val versionCodeAltRegex = Regex("(?:Version|Vertion)Code:\\s*([0-9]+)", RegexOption.IGNORE_CASE)
+    val versionCodeAltRegex = Regex("VersionCode:\\s*([0-9]+)", RegexOption.IGNORE_CASE)
     val versionNameAltRegex = Regex("VersionName:\\s*([0-9.]+)", RegexOption.IGNORE_CASE)
     val lineRegex = Regex("^(\\d+)[-:](.*)$")
 
