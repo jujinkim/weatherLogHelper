@@ -261,15 +261,16 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
           const matchedAttr = matched.length > 0 ? matched.join(',') : '';
           const lines = entry.preview.split(/\r?\n/).length || 1;
           const safeLines = Math.min(Math.max(lines, 1), 12);
-          return `
-            <li data-packages="${escape(matchedAttr)}">
-              <div class="entry-header">
-                <button class="jump" data-line="${entry.line}">L${entry.line}</button>
-                <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button>
-              </div>
-              <textarea class="entry-text" rows="${safeLines}" readonly>${escape(entry.preview)}</textarea>
-            </li>
-          `;
+          const preview = escape(entry.preview);
+          return (
+            `<li data-packages="${escape(matchedAttr)}">` +
+            `<div class="entry-header">` +
+            `<button class="jump" data-line="${entry.line}">L${entry.line}</button>` +
+            `<button class="copy" data-copy="${entry.line}" title="Copy line">📋</button>` +
+            `</div>` +
+            `<textarea class="entry-text" rows="${safeLines}" readonly>${preview}</textarea>` +
+            `</li>`
+          );
         })
         .join('');
       return items + `<li data-empty="1" style="display:none">${escape(emptyText)}</li>`;

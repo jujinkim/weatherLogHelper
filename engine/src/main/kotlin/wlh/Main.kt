@@ -604,7 +604,7 @@ private fun formatCrashLines(lines: List<String>): List<String> {
     }
     if (!leadingTokensMatch) return lines
     return tokensPerLine.map { parts ->
-        parts.drop(5).joinToString("\t")
+        parts.drop(5).joinToString(" ")
     }
 }
 
