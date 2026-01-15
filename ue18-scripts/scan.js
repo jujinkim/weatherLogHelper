@@ -1,11 +1,44 @@
 var fso = new ActiveXObject("Scripting.FileSystemObject");
 var shell = new ActiveXObject("WScript.Shell");
 var configPath = UltraEdit.activeDocument.path + "wlh.config.json";
+var maxWaitMs = 120000;
+var waitIntervalMs = 500;
+
+function parseJson(text, label) {
+  try {
+    return eval("(" + text + ")");
+  } catch (err) {
+    UltraEdit.outputWindow.write("Failed to parse " + label + " JSON\n");
+    return null;
+  }
+}
+
+function waitForResult(path) {
+  var waited = 0;
+  while (waited < maxWaitMs) {
+    if (fso.FileExists(path)) {
+      try {
+        var size = fso.GetFile(path).Size;
+        if (size > 0) {
+          return true;
+        }
+      } catch (err) {
+      }
+    }
+    WScript.Sleep(waitIntervalMs);
+    waited += waitIntervalMs;
+  }
+  return false;
+}
+
 if (!fso.FileExists(configPath)) {
   UltraEdit.outputWindow.write("Missing wlh.config.json in current directory\n");
 } else {
   var file = fso.OpenTextFile(configPath, 1).ReadAll();
-  var config = eval('(' + file + ')');
+  var config = parseJson(file, "config");
+  if (!config) {
+    return;
+  }
   var wlhPath = config.wlhPath;
   if (!wlhPath) {
     UltraEdit.outputWindow.write("Missing wlhPath in wlh.config.json\n");
@@ -15,13 +48,21 @@ if (!fso.FileExists(configPath)) {
     var exec = shell.Exec(cmd);
     var output = exec.StdOut.ReadAll();
     UltraEdit.outputWindow.write(output);
+    var scanResult = parseJson(output, "scan result");
+    if (scanResult && scanResult.status && scanResult.status !== "ok") {
+      UltraEdit.outputWindow.write("Scan failed: " + scanResult.status + "\n");
+      return;
+    }
     var resultPath = filePath + ".wlhresult";
-    if (!fso.FileExists(resultPath)) {
-      UltraEdit.outputWindow.write("Missing .wlhresult file: " + resultPath + "\n");
+    if (!waitForResult(resultPath)) {
+      UltraEdit.outputWindow.write("Scan results not ready: " + resultPath + "\n");
       return;
     }
     var resultRaw = fso.OpenTextFile(resultPath, 1).ReadAll();
-    var result = eval('(' + resultRaw + ')');
+    var result = parseJson(resultRaw, "result");
+    if (!result) {
+      return;
+    }
     var lines = [];
     lines.push("WLH Scan View");
     lines.push("Source: " + filePath);

@@ -1,12 +1,24 @@
 var fso = new ActiveXObject("Scripting.FileSystemObject");
 
+function parseJson(text, label) {
+  try {
+    return eval("(" + text + ")");
+  } catch (err) {
+    UltraEdit.outputWindow.write("Failed to parse " + label + " JSON\n");
+    return null;
+  }
+}
+
 var filePath = UltraEdit.activeDocument.path + UltraEdit.activeDocument.name;
 var resultPath = filePath + ".wlhresult";
 if (!fso.FileExists(resultPath)) {
   UltraEdit.outputWindow.write("Missing .wlhresult file: " + resultPath + "\n");
 } else {
   var resultRaw = fso.OpenTextFile(resultPath, 1).ReadAll();
-  var result = eval('(' + resultRaw + ')');
+  var result = parseJson(resultRaw, "result");
+  if (!result) {
+    return;
+  }
   var lines = [];
   lines.push("WLH Scan View");
   lines.push("Source: " + filePath);
