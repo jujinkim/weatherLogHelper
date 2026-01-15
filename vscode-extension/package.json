@@ -2,7 +2,7 @@
   "name": "weather-log-helper",
   "displayName": "Weather Log Helper",
   "description": "Internal WLH client",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "jujinkim",
   "author": "jujin.kim",
   "license": "UNLICENSED",
