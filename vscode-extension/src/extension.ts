@@ -710,6 +710,7 @@ async function scanFull(filePath: string, force = false) {
   sidebarProvider?.update('Scanning...');
   sidebarProvider?.updateStatus('Scanning...');
   sidebarProvider?.updateFilePath(filePath);
+  void refreshAfterScan(filePath, 3000);
   const engineConfig = readEngineConfig();
   if (engineConfig.scanPackages.length === 0) {
     sidebarProvider?.update('No packages configured.');
@@ -739,6 +740,25 @@ async function scanFull(filePath: string, force = false) {
     sidebarProvider?.update(`Error: ${(err as Error).message}`);
     sidebarProvider?.updateStatus('Error');
   }
+}
+
+async function refreshAfterScan(filePath: string, timeoutMs: number) {
+  const resultPath = buildResultFilePath(filePath);
+  const start = Date.now();
+  let lastMtime = 0;
+  while (Date.now() - start < timeoutMs) {
+    if (fs.existsSync(resultPath)) {
+      const stat = fs.statSync(resultPath);
+      if (lastMtime === 0) {
+        lastMtime = stat.mtimeMs;
+      } else if (stat.mtimeMs !== lastMtime) {
+        await refreshSidebarFromActiveEditor();
+        return;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  await refreshSidebarFromActiveEditor();
 }
 
 async function refreshSidebarFromActiveEditor() {
