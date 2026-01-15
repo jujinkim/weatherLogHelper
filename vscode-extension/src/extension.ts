@@ -839,7 +839,10 @@ async function runWlhCommand(args: string[], label: string) {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  output.appendLine('WLH extension activated');
+  const extension = vscode.extensions.getExtension('jujinkim.weather-log-helper');
+  const version = extension?.packageJSON?.version || 'unknown';
+  const buildTime = extension?.packageJSON?.versionInfo || 'unknown';
+  output.appendLine(`WLH extension activated (version=${version}, build=${buildTime})`);
   sidebarProvider = new WlhSidebarProvider(
     async (filePath, line) => {
       try {
