@@ -355,7 +355,7 @@ private fun scanFatalCrashes(
                 if (processLine.contains("Process:") && packageFilters.any { processLineLower.contains(it) }) {
                     val blockLines = mutableListOf(fatalLine, processLine)
                     var lookahead = 0
-                    while (lookahead < 5) {
+                    while (lookahead < 3) {
                         val next = reader.readLine()
                         if (next == null) {
                             break
@@ -393,7 +393,7 @@ private fun scanFatalCrashes(
                     if (packageName != null && packageFilters.contains(packageName)) {
                         val blockLines = mutableListOf(crashLine, nextLine)
                         var added = 0
-                        while (added < 5) {
+                        while (added < 3) {
                             val next = reader.readLine() ?: break
                             lineNumber += 1
                             processedBytes += next.length + 1
@@ -422,7 +422,7 @@ private fun scanFatalCrashes(
                         val anrLineNumber = lineNumber
                         val blockLines = mutableListOf(line)
                         var added = 0
-                        while (added < 5) {
+                        while (added < 3) {
                             val next = reader.readLine() ?: break
                             lineNumber += 1
                             processedBytes += next.length + 1
@@ -509,7 +509,7 @@ private fun processFatalBlock(
         val block = mutableListOf(fatalLine, processLine)
         var added = 0
         for (i in fatalIndex + 2 until blockLines.size) {
-            if (added >= 5) break
+            if (added >= 3) break
             val line = blockLines[i].second
             if (line.contains("AndroidRuntime", ignoreCase = true)) {
                 block.add(line)
@@ -545,7 +545,7 @@ private fun processFatalBlock(
     val block = mutableListOf(crashLine, nextLine)
     var added = 0
     for (i in crashIndex + 2 until blockLines.size) {
-        if (added >= 5) break
+        if (added >= 3) break
         val line = blockLines[i].second
         if (line.contains("CRASH", ignoreCase = true)) {
             block.add(line)
@@ -571,7 +571,7 @@ private fun processFatalBlock(
     val anrBlock = mutableListOf(anrLine)
     var anrAdded = 0
     for (i in anrIndex + 1 until blockLines.size) {
-        if (anrAdded >= 5) break
+        if (anrAdded >= 3) break
         anrBlock.add(blockLines[i].second)
         anrAdded += 1
     }
