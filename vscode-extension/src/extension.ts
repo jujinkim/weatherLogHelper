@@ -244,32 +244,28 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
           })
           .join('')
       : '<li>None</li>';
-    const crashes = results.crashes.length
-      ? results.crashes
-          .map(
-            (c) =>
-              `<li><button class="jump" data-line="${c.line}">L${c.line}</button> ${escape(
-                c.preview
-              )}</li>`
-          )
-          .join('')
-      : '<li>None</li>';
     const scanPackagesLower = scanPackages.map((pkg) => pkg.toLowerCase());
-    const renderEntries = (entries: CrashEntry[]) =>
-      entries.length
-        ? entries
-            .map((entry) => {
-              const previewLower = entry.preview.toLowerCase();
-              const matched = entry.packageName
-                ? [entry.packageName.toLowerCase()]
-                : scanPackagesLower.filter((pkg) => previewLower.includes(pkg));
-              const matchedAttr = matched.length > 0 ? matched.join(',') : '';
-              return `<li data-packages="${escape(matchedAttr)}"><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(
-                entry.preview
-              )}</li>`;
-            })
-            .join('')
-        : '<li>None</li>';
+    const renderEntries = (entries: CrashEntry[], emptyText: string) => {
+      if (entries.length === 0) {
+        return `<li data-empty="1">${escape(emptyText)}</li>`;
+      }
+      const items = entries
+        .map((entry) => {
+          const previewLower = entry.preview.toLowerCase();
+          const matched = entry.packageName
+            ? [entry.packageName.toLowerCase()]
+            : scanPackagesLower.filter((pkg) => previewLower.includes(pkg));
+          const matchedAttr = matched.length > 0 ? matched.join(',') : '';
+          return `<li data-packages="${escape(matchedAttr)}"><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(
+            entry.preview
+          )}</li>`;
+        })
+        .join('');
+      return items + `<li data-empty="1" style="display:none">${escape(emptyText)}</li>`;
+    };
+
+    const anrEntries = results.crashes.filter((entry) => entry.preview.includes('ANR in'));
+    const crashEntries = results.crashes.filter((entry) => !entry.preview.includes('ANR in'));
 
     const packageOptions = scanPackages.map(
       (pkg) => `<option value="${escape(pkg.toLowerCase())}">${escape(pkg)}</option>`
@@ -427,7 +423,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             <h4>Versions</h4>
             <ul>${versions}</ul>
             <h4>Crashes</h4>
-            <ul id="crashList">${crashes}</ul>
+            <ul id="crashList">${renderEntries(crashEntries, 'No crash log')}</ul>
+            <h4>ANR</h4>
+            <ul id="anrList">${renderEntries(anrEntries, 'No ANR log')}</ul>
           </div>
           <script>
             const vscode = acquireVsCodeApi();
@@ -468,10 +466,28 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             if (packageSelect) {
               const applyFilter = () => {
                 const value = packageSelect.value;
-                document.querySelectorAll('#crashList li').forEach((item) => {
-                  const data = item.getAttribute('data-packages') || '';
-                  const match = data.split(',').includes(value);
-                  item.style.display = match ? '' : 'none';
+                const lists = ['crashList', 'anrList'];
+                lists.forEach((id) => {
+                  const items = Array.from(document.querySelectorAll('#' + id + ' li'));
+                  let visible = 0;
+                  items.forEach((item) => {
+                    if (item.getAttribute('data-empty') === '1') {
+                      item.style.display = 'none';
+                      return;
+                    }
+                    const data = item.getAttribute('data-packages') || '';
+                    const match = data.split(',').includes(value);
+                    item.style.display = match ? '' : 'none';
+                    if (match) {
+                      visible += 1;
+                    }
+                  });
+                  if (visible === 0) {
+                    const emptyItem = items.find((item) => item.getAttribute('data-empty') === '1');
+                    if (emptyItem) {
+                      emptyItem.style.display = '';
+                    }
+                  }
                 });
               };
               applyFilter();
