@@ -313,9 +313,8 @@ private fun scanFatalCrashes(
     val crashMarker = "FATAL EXCEPTION:"
     val appCrashedMarker = "APP CRASHED"
     val anrRegex = Regex("ANR in\\s+([0-9A-Za-z._-]+)")
-    val processRegex = Regex("Process:\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
 
-    val rgResult = runRgFatalScan(file, packageFilters, processRegex, crashMarker, appCrashedMarker, anrRegex)
+    val rgResult = runRgFatalScan(file, packageFilters, crashMarker, appCrashedMarker, anrRegex)
     if (rgResult != null) {
         crashes.addAll(rgResult)
         job.progress = progressCap
@@ -352,10 +351,8 @@ private fun scanFatalCrashes(
                 val processLine = reader.readLine() ?: break
                 lineNumber += 1
                 processedBytes += processLine.length + 1
-                val match = processRegex.find(processLine)
-                if (match != null) {
-                    val packageName = match.groupValues[1].lowercase(Locale.ROOT)
-                    if (packageFilters.contains(packageName)) {
+                val packageName = extractProcessPackage(processLine)?.lowercase(Locale.ROOT)
+                if (packageName != null && packageFilters.contains(packageName)) {
                         val blockLines = mutableListOf(fatalLine, processLine)
                         var lookahead = 0
                         while (lookahead < 5) {
@@ -381,7 +378,6 @@ private fun scanFatalCrashes(
                             continue
                         }
                     }
-                }
             } else if (line.contains(appCrashedMarker)) {
                 val crashLineNumber = lineNumber
                 val crashLine = line
@@ -452,7 +448,6 @@ private fun scanFatalCrashes(
 private fun runRgFatalScan(
     file: File,
     packageFilters: List<String>,
-    processRegex: Regex,
     crashMarker: String,
     appCrashedMarker: String,
     anrRegex: Regex
@@ -477,7 +472,7 @@ private fun runRgFatalScan(
     process.inputStream.bufferedReader().useLines { lines ->
         lines.forEach { raw ->
             if (raw == "--") {
-                processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, appCrashedMarker, anrRegex, crashes, crashLines)
+                processFatalBlock(blockLines, packageFilters, crashMarker, appCrashedMarker, anrRegex, crashes, crashLines)
                 blockLines.clear()
                 return@forEach
             }
@@ -488,7 +483,7 @@ private fun runRgFatalScan(
         }
     }
     if (blockLines.isNotEmpty()) {
-        processFatalBlock(blockLines, packageFilters, processRegex, crashMarker, appCrashedMarker, anrRegex, crashes, crashLines)
+        processFatalBlock(blockLines, packageFilters, crashMarker, appCrashedMarker, anrRegex, crashes, crashLines)
     }
 
     return if (process.waitFor() == 0) crashes else null
@@ -497,7 +492,6 @@ private fun runRgFatalScan(
 private fun processFatalBlock(
     blockLines: List<Pair<Long, String>>,
     packageFilters: List<String>,
-    processRegex: Regex,
     crashMarker: String,
     appCrashedMarker: String,
     anrRegex: Regex,
@@ -508,9 +502,8 @@ private fun processFatalBlock(
     if (fatalIndex != -1 && fatalIndex + 1 < blockLines.size) {
         val (fatalLineNumber, fatalLine) = blockLines[fatalIndex]
         val processLine = blockLines[fatalIndex + 1].second
-        val match = processRegex.find(processLine) ?: return
-        val packageName = match.groupValues[1].lowercase(Locale.ROOT)
-        if (!packageFilters.contains(packageName)) {
+        val packageName = extractProcessPackage(processLine)?.lowercase(Locale.ROOT)
+        if (packageName == null || !packageFilters.contains(packageName)) {
             return
         }
         val block = mutableListOf(fatalLine, processLine)
@@ -585,6 +578,14 @@ private fun processFatalBlock(
     if (crashLines.add(anrLineNumber)) {
         crashes.add(CrashEntry(anrLineNumber, anrBlock.joinToString("\n")))
     }
+}
+
+private fun extractProcessPackage(line: String): String? {
+    val idx = line.indexOf("Process:", ignoreCase = true)
+    if (idx == -1) return null
+    val rest = line.substring(idx + "Process:".length).trim()
+    if (rest.isEmpty()) return null
+    return rest.split(Regex("[,\\s]+")).firstOrNull()?.takeIf { it.isNotBlank() }
 }
 
 private fun scanPackageVersions(file: File, config: EngineConfig): List<VersionEntry> {
