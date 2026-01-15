@@ -757,7 +757,8 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
     var altPackageName: String? = null
 
     fun flush() {
-        if (currentPackage != null && versionCode != null && versionName != null && headerLineNumber != null) {
+        val pkg = currentPackage
+        if (pkg != null && versionCode != null && versionName != null && headerLineNumber != null) {
             val label = buildString {
                 append(versionName)
                 append(" (")
@@ -767,7 +768,7 @@ private fun runRgVersionScan(file: File, packageFilters: Set<String>): List<Vers
                     append(" [System]")
                 }
             }
-            versions.add(VersionEntry(headerLineNumber!!, label, currentPackage))
+            versions.add(VersionEntry(headerLineNumber!!, label, pkg))
         }
         active = false
         remaining = 0
