@@ -19,13 +19,12 @@
     "onCommand:wlh.scanForce",
     "onCommand:wlh.decryptCurrentFile",
     "onCommand:wlh.openSettings",
+    "onCommand:wlh.openEngineConfig",
     "onCommand:wlh.status",
-    "onCommand:wlh.start",
-    "onCommand:wlh.restart",
     "onCommand:wlh.stop",
-    "onCommand:wlh.runEngineDirect",
     "onCommand:wlh.openHome",
     "onCommand:wlh.refreshView",
+    "onCommand:wlh.engineMenu",
     "onView:wlh.sidebar",
     "onStartupFinished"
   ],
@@ -50,24 +49,16 @@
         "title": "WLH: Open Settings"
       },
       {
+        "command": "wlh.openEngineConfig",
+        "title": "WLH: Open Engine Config"
+      },
+      {
         "command": "wlh.status",
         "title": "WLH: Engine Status"
       },
       {
-        "command": "wlh.start",
-        "title": "WLH: Engine Start"
-      },
-      {
-        "command": "wlh.restart",
-        "title": "WLH: Engine Restart"
-      },
-      {
         "command": "wlh.stop",
         "title": "WLH: Engine Stop"
-      },
-      {
-        "command": "wlh.runEngineDirect",
-        "title": "WLH: Run Engine Direct"
       },
       {
         "command": "wlh.openHome",
@@ -75,7 +66,11 @@
       },
       {
         "command": "wlh.refreshView",
-        "title": "WLH: Refresh Sidebar"
+        "title": "WLH: 패널 새로고침"
+      },
+      {
+        "command": "wlh.engineMenu",
+        "title": "WLH: Engine Menu"
       }
     ],
     "menus": {
@@ -83,8 +78,14 @@
         {
           "command": "wlh.refreshView",
           "when": "view == wlh.sidebar",
-          "group": "navigation",
+          "group": "navigation@1",
           "icon": "$(refresh)"
+        },
+        {
+          "command": "wlh.engineMenu",
+          "when": "view == wlh.sidebar",
+          "group": "navigation@2",
+          "icon": "$(ellipsis)"
         }
       ]
     },

@@ -44,6 +44,8 @@ This produces the fat jar under `engine/build/libs/`.
 - Required settings (VSCode Settings):
   - `wlh.commandPath` (path to `wlh` bootstrap)
   - `wlh.decrypt.jarPath` (path to decrypt jar)
+  - `wlh.update.baseUrl` (optional override for engine update URL)
+  - `wlh.decrypt.timeoutSeconds` (optional, default 10)
 
 Optional internal packaging uses `vsce` from within `vscode-extension/`:
 - `npm install -g @vscode/vsce`
@@ -79,6 +81,15 @@ Common commands:
 - `wlh adb devices`
 - `wlh adb run --serial SERIAL -- shell getprop`
 
+### VSCode Extension Usage
+
+- Open the WLH view from the Activity Bar, then run scans from the panel.
+- Results are loaded from the `.wlhresult` file written next to the log file.
+- `WLH: Force Scan` ignores cached results and re-scans the file.
+- Required settings:
+  - `wlh.commandPath` must point to the `wlh` bootstrap (`wlh.sh` or `wlh.bat`).
+  - `wlh.decrypt.jarPath` must point to the decrypt tool jar.
+
 ## Scan Result File (.wlhresult)
 
 When a scan completes, the engine writes a result file alongside the log:
@@ -98,6 +109,7 @@ Schema (high level):
 Notes:
 - The `.wlhresult` file is overwritten on each completed scan.
 - Clients can read `.wlhresult` instead of calling result endpoints.
+ - Results are cached by file path, size, mtime, and configured scan packages; use `wlh scan --force` to bypass cache.
  - Version parsing includes both `Package [name] (...)` blocks (codePath + versionName/versionCode) and `mPackageName='name'` blocks with `VersionName:` / `VersionCode:` lines.
  - Crash parsing includes `FATAL EXCEPTION` (AndroidRuntime lines), `APP CRASHED` (CRASH tag lines), and `ANR in <package>` (next 5 lines).
 
@@ -110,12 +122,30 @@ WLH resolves the update base URL in this order:
 Environment variables are not used for base URL resolution.
 `WLH_HOME` is resolved by `--home` or the default `~/.wlh`/`%USERPROFILE%\\.wlh`.
 
+## Engine Config (WLH_HOME/config/wlh.json)
+
+The engine reads `WLH_HOME/config/wlh.json` for scan packages, and the bootstrap reads it for `updateBaseUrl`.
+
+Example:
+```json
+{
+  "updateBaseUrl": "__WLH_BASE_URL__",
+  "scanPackages": [
+    "com.example.app",
+    "com.example.app.beta"
+  ]
+}
+```
+
+If `scanPackages` is empty or missing, scans return no results.
+
 ## Common Mistakes
 
 - Running `npm` at the repository root (npm is only for `vscode-extension/`).
 - Expecting Gradle to build editor plugins (Gradle is only for `engine/`).
 - Mixing build systems across components.
 - Assuming environment variables are used for `WLH_HOME` or base URL (they are ignored).
+ - Forgetting to set `wlh.commandPath` / `wlh.decrypt.jarPath` in VSCode Settings.
 
 ## Developer Workflow Summary
 

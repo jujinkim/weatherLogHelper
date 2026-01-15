@@ -121,7 +121,30 @@ from pathlib import Path
 p = Path("$file")
 if not p.exists():
     raise SystemExit(1)
-obj = json.loads(p.read_text())
+raw = p.read_text()
+if not raw:
+    raise SystemExit(1)
+
+def load_json(text):
+    text = text.strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except Exception:
+        try:
+            decoder = json.JSONDecoder()
+            obj, _ = decoder.raw_decode(text)
+            return obj
+        except Exception:
+            return None
+
+obj = load_json(raw)
+if isinstance(obj, str):
+    obj = load_json(obj)
+if not isinstance(obj, dict):
+    raise SystemExit(1)
+
 print(obj.get("port", ""))
 print(obj.get("pid", ""))
 PY

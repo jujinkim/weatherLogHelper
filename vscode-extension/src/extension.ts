@@ -82,13 +82,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly onJump: (filePath: string, line: number) => void,
     private readonly onDecrypt: (filePath: string) => void,
-    private readonly onOpenSettings: () => void,
-    private readonly onStatus: () => void,
-    private readonly onStart: () => void,
-    private readonly onRestart: () => void,
-    private readonly onStop: () => void,
-    private readonly onRunEngineDirect: () => void,
-    private readonly onOpenHome: () => void,
     private readonly onScan: (filePath: string, force: boolean) => void
   ) {}
 
@@ -111,30 +104,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
         } else {
           vscode.window.showErrorMessage('WLH: No active file to decrypt.');
         }
-      }
-      if (message?.type === 'openSettings') {
-        this.onOpenSettings();
-      }
-      if (message?.type === 'status') {
-        this.onStatus();
-      }
-      if (message?.type === 'start') {
-        this.onStart();
-      }
-      if (message?.type === 'restart') {
-        this.onRestart();
-      }
-      if (message?.type === 'stop') {
-        this.onStop();
-      }
-      if (message?.type === 'runEngineDirect') {
-        this.onRunEngineDirect();
-      }
-      if (message?.type === 'openHome') {
-        this.onOpenHome();
-      }
-      if (message?.type === 'openEngineConfig') {
-        openEngineConfig();
       }
       if (message?.type === 'scan') {
         const filePath = this.currentResults?.filePath || resolveActiveFilePath();
@@ -423,16 +392,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
         <body>
           <div class="card">
             <h3>Weather Log Helper</h3>
-            <div class="actions">
-              <button id="status">Status</button>
-              <button id="start">Start</button>
-              <button id="restart">Restart</button>
-              <button id="stop">Stop</button>
-              <button id="runEngineDirect">Run Engine Direct</button>
-              <button id="openHome">Open WLH Home</button>
-              <button id="openSettings">Open Settings</button>
-              <button id="openEngineConfig">Open Engine Config</button>
-            </div>
             <div class="section">
               <h4>Scan</h4>
               <div class="path">${escape(results.filePath)}</div>
@@ -461,27 +420,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
           </div>
           <script>
             const vscode = acquireVsCodeApi();
-            document.getElementById('status').addEventListener('click', () => {
-              vscode.postMessage({ type: 'status' });
-            });
-            document.getElementById('start').addEventListener('click', () => {
-              vscode.postMessage({ type: 'start' });
-            });
-            document.getElementById('restart').addEventListener('click', () => {
-              vscode.postMessage({ type: 'restart' });
-            });
-            document.getElementById('stop').addEventListener('click', () => {
-              vscode.postMessage({ type: 'stop' });
-            });
-            document.getElementById('runEngineDirect').addEventListener('click', () => {
-              vscode.postMessage({ type: 'runEngineDirect' });
-            });
-            document.getElementById('openHome').addEventListener('click', () => {
-              vscode.postMessage({ type: 'openHome' });
-            });
-            document.getElementById('openEngineConfig').addEventListener('click', () => {
-              vscode.postMessage({ type: 'openEngineConfig' });
-            });
             document.getElementById('scan').addEventListener('click', () => {
               vscode.postMessage({ type: 'scan' });
             });
@@ -490,9 +428,6 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             });
             document.getElementById('decrypt').addEventListener('click', () => {
               vscode.postMessage({ type: 'decrypt' });
-            });
-            document.getElementById('openSettings').addEventListener('click', () => {
-              vscode.postMessage({ type: 'openSettings' });
             });
             const packageSelect = document.getElementById('packageSelect');
             if (packageSelect) {
@@ -911,6 +846,47 @@ export function activate(context: vscode.ExtensionContext) {
   const version = extension?.packageJSON?.version || 'unknown';
   const buildTime = extension?.packageJSON?.versionInfo || 'unknown';
   output.appendLine(`WLH extension activated (version=${version}, build=${buildTime})`);
+
+  const showEngineMenu = async () => {
+    const pick = await vscode.window.showQuickPick(
+      [
+        { label: 'Status', id: 'status' },
+        { label: 'Stop', id: 'stop' },
+        { label: 'Open WLH Home', id: 'home' },
+        { label: 'Open Settings', id: 'settings' },
+        { label: 'Open Engine Config', id: 'engineConfig' },
+        { label: '패널 새로고침', id: 'refresh' }
+      ],
+      { placeHolder: 'WLH Actions' }
+    );
+    if (!pick) {
+      return;
+    }
+    switch (pick.id) {
+      case 'status':
+        await runWlhCommand(['status', '--no-update'], 'Status');
+        break;
+      case 'stop':
+        await runWlhCommand(['stop'], 'Stop');
+        break;
+      case 'home': {
+        ensureHomeDirectory();
+        const homePath = resolveDefaultHome();
+        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(homePath));
+        break;
+      }
+      case 'settings':
+        await vscode.commands.executeCommand('workbench.action.openSettings', 'wlh');
+        break;
+      case 'engineConfig':
+        openEngineConfig();
+        break;
+      case 'refresh':
+        await refreshSidebarFromActiveEditor();
+        break;
+    }
+  };
+
   sidebarProvider = new WlhSidebarProvider(
     async (filePath, line) => {
       try {
@@ -930,29 +906,6 @@ export function activate(context: vscode.ExtensionContext) {
     },
     async (filePath) => {
       await decryptFile(filePath);
-    },
-    async () => {
-      await vscode.commands.executeCommand('workbench.action.openSettings', 'wlh');
-    },
-    async () => {
-      await runWlhCommand(['status', '--no-update'], 'Status');
-    },
-    async () => {
-      await runWlhCommand(['start'], 'Start');
-    },
-    async () => {
-      await runWlhCommand(['restart'], 'Restart');
-    },
-    async () => {
-      await runWlhCommand(['stop'], 'Stop');
-    },
-    async () => {
-      await runEngineDirect();
-    },
-    async () => {
-      ensureHomeDirectory();
-      const homePath = resolveDefaultHome();
-      await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(homePath));
     },
     async (filePath, force) => {
       await scanFull(filePath, force);
@@ -1001,25 +954,22 @@ export function activate(context: vscode.ExtensionContext) {
   const openSettingsCommand = vscode.commands.registerCommand('wlh.openSettings', async () => {
     await vscode.commands.executeCommand('workbench.action.openSettings', 'wlh');
   });
+  const openEngineConfigCommand = vscode.commands.registerCommand('wlh.openEngineConfig', async () => {
+    openEngineConfig();
+  });
   const statusCommand = vscode.commands.registerCommand('wlh.status', async () => {
     await runWlhCommand(['status', '--no-update'], 'Status');
   });
-  const startCommand = vscode.commands.registerCommand('wlh.start', async () => {
-    await runWlhCommand(['start'], 'Start');
-  });
-  const restartCommand = vscode.commands.registerCommand('wlh.restart', async () => {
-    await runWlhCommand(['restart'], 'Restart');
-  });
   const stopCommand = vscode.commands.registerCommand('wlh.stop', async () => {
     await runWlhCommand(['stop'], 'Stop');
-  });
-  const runEngineCommand = vscode.commands.registerCommand('wlh.runEngineDirect', async () => {
-    await runEngineDirect();
   });
   const openHomeCommand = vscode.commands.registerCommand('wlh.openHome', async () => {
     ensureHomeDirectory();
     const homePath = resolveDefaultHome();
     await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(homePath));
+  });
+  const engineMenuCommand = vscode.commands.registerCommand('wlh.engineMenu', async () => {
+    await showEngineMenu();
   });
 
   const openListener = vscode.workspace.onDidOpenTextDocument(async (doc) => {
@@ -1051,12 +1001,11 @@ export function activate(context: vscode.ExtensionContext) {
     refreshCommand,
     decryptCommand,
     openSettingsCommand,
+    openEngineConfigCommand,
     statusCommand,
-    startCommand,
-    restartCommand,
     stopCommand,
-    runEngineCommand,
     openHomeCommand,
+    engineMenuCommand,
     openListener,
     activeListener,
     { dispose: () => clearInterval(pollTimer) },
