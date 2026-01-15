@@ -263,7 +263,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
                 : scanPackages.filter((pkg) =>
                     entry.preview.toLowerCase().includes(pkg.toLowerCase())
                   );
-              const matchedAttr = matched.length > 0 ? matched.join(',') : scanPackages.join(',');
+              const matchedAttr = matched.length > 0 ? matched.join(',') : '';
               return `<li data-packages="${escape(matchedAttr)}"><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(
                 entry.preview
               )}</li>`;
