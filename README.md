@@ -72,6 +72,7 @@ Available scripts:
 Common commands:
 - `wlh status`
 - `wlh scan /path/to/log.txt`
+- `wlh scan --force /path/to/log.txt`
 - `wlh versions /path/to/log.txt`
 - `wlh crashes /path/to/log.txt`
 - `wlh decrypt /path/to/log.txt --jar /path/to/dec.jar --timeout 60`

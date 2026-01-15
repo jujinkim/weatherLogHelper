@@ -16,6 +16,7 @@
   "categories": ["Other"],
   "activationEvents": [
     "onCommand:wlh.scan",
+    "onCommand:wlh.scanForce",
     "onCommand:wlh.decryptCurrentFile",
     "onCommand:wlh.openSettings",
     "onCommand:wlh.status",
@@ -34,6 +35,10 @@
       {
         "command": "wlh.scan",
         "title": "WLH: Scan"
+      },
+      {
+        "command": "wlh.scanForce",
+        "title": "WLH: Force Scan"
       },
       {
         "command": "wlh.decryptCurrentFile",

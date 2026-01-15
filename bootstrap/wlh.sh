@@ -370,13 +370,18 @@ proxy_status() {
 
 proxy_scan() {
   local file="$1"
+  local force="$2"
   if ! is_daemon_alive; then
     start_daemon >/dev/null
   fi
   readarray -t vals < <(parse_daemon_json "$WLH_HOME/daemon/daemon.json" || true)
   local port="${vals[0]:-}"
   local payload
-  payload=$(printf '{"file":"%s"}' "$file")
+  if [ -n "$force" ]; then
+    payload=$(printf '{"file":"%s","force":true}' "$file")
+  else
+    payload=$(printf '{"file":"%s"}' "$file")
+  fi
   http_post "http://127.0.0.1:${port}/api/v1/scan" "$payload" || json_error "scan_failed"
 }
 
@@ -541,9 +546,14 @@ case "$COMMAND" in
     ;;
   scan)
     file=""
+    force=""
     i=0
     while [ $i -lt ${#REMAINING[@]} ]; do
       case "${REMAINING[$i]}" in
+        --force)
+          force="1"
+          i=$((i + 1))
+          ;;
         *)
           file="${REMAINING[$i]}"
           i=$((i + 1))
@@ -554,7 +564,7 @@ case "$COMMAND" in
       json_error "missing_file"
       exit 1
     fi
-    proxy_scan "$file"
+    proxy_scan "$file" "$force"
     ;;
   versions)
     file="${REMAINING[0]:-}"

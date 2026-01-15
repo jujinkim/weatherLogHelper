@@ -72,7 +72,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     private readonly onStop: () => void,
     private readonly onRunEngineDirect: () => void,
     private readonly onOpenHome: () => void,
-    private readonly onScan: (filePath: string) => void
+    private readonly onScan: (filePath: string, force: boolean) => void
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -122,7 +122,15 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       if (message?.type === 'scan') {
         const filePath = this.currentResults?.filePath || resolveActiveFilePath();
         if (filePath) {
-          this.onScan(filePath);
+          this.onScan(filePath, false);
+        } else {
+          vscode.window.showErrorMessage('WLH: No active file to scan.');
+        }
+      }
+      if (message?.type === 'scanForce') {
+        const filePath = this.currentResults?.filePath || resolveActiveFilePath();
+        if (filePath) {
+          this.onScan(filePath, true);
         } else {
           vscode.window.showErrorMessage('WLH: No active file to scan.');
         }
@@ -385,7 +393,8 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               <h4>Scan</h4>
               <div class="path">${escape(results.filePath)}</div>
               <div class="actions">
-                <button id="scan">Run Full Scan</button>
+              <button id="scan">Run Scan</button>
+              <button id="scanForce">Force Scan</button>
                 <button id="decrypt">Run Decrypt</button>
               </div>
             </div>
@@ -429,6 +438,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             });
             document.getElementById('scan').addEventListener('click', () => {
               vscode.postMessage({ type: 'scan' });
+            });
+            document.getElementById('scanForce').addEventListener('click', () => {
+              vscode.postMessage({ type: 'scanForce' });
             });
             document.getElementById('decrypt').addEventListener('click', () => {
               vscode.postMessage({ type: 'decrypt' });
@@ -630,7 +642,7 @@ async function waitForResultFile(filePath: string, timeoutMs: number): Promise<s
   throw new Error('result_file_timeout');
 }
 
-async function scanFull(filePath: string) {
+async function scanFull(filePath: string, force = false) {
   output.appendLine(`Scanning ${filePath}`);
   sidebarProvider?.update('Scanning...');
   sidebarProvider?.updateStatus('Scanning...');
@@ -643,10 +655,12 @@ async function scanFull(filePath: string) {
     return;
   }
   try {
-    const scanResult = await runWlhJson<{ status: string; jobId?: string }>([
-      'scan',
-      filePath
-    ]);
+    const args = ['scan'];
+    if (force) {
+      args.push('--force');
+    }
+    args.push(filePath);
+    const scanResult = await runWlhJson<{ status: string; jobId?: string }>(args);
     if (scanResult.status !== 'ok') {
       sidebarProvider?.update(JSON.stringify(scanResult));
       return;
@@ -853,8 +867,8 @@ export function activate(context: vscode.ExtensionContext) {
       const homePath = resolveDefaultHome();
       await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(homePath));
     },
-    async (filePath) => {
-      await scanFull(filePath);
+    async (filePath, force) => {
+      await scanFull(filePath, force);
     }
   );
   context.subscriptions.push(
@@ -877,6 +891,14 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
     await scanFull(filePath);
+  });
+  const scanForceCommand = vscode.commands.registerCommand('wlh.scanForce', async () => {
+    const filePath = resolveActiveFilePath();
+    if (!filePath) {
+      vscode.window.showInformationMessage('WLH: No active file');
+      return;
+    }
+    await scanFull(filePath, true);
   });
   const refreshCommand = vscode.commands.registerCommand('wlh.refreshView', async () => {
     await refreshSidebarFromActiveEditor();
@@ -938,6 +960,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     scanCommand,
+    scanForceCommand,
     refreshCommand,
     decryptCommand,
     openSettingsCommand,

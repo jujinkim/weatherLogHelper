@@ -140,6 +140,7 @@ private fun route(
             val body = readBody(exchange)
             val node = mapper.readTree(body)
             val file = node.path("file").asText(null)
+            val force = node.path("force").asBoolean(false)
             if (file == null) {
                 sendJson(exchange, 400, mapper.writeValueAsString(mapOf("status" to "error", "message" to "missing_fields")))
                 return
@@ -153,7 +154,7 @@ private fun route(
             val job = Job(jobId, target.absolutePath, "running", 0)
             jobs[jobId] = job
             executor.submit {
-                runScan(job, target, engineHome, mapper, lastResult)
+                runScan(job, target, engineHome, mapper, lastResult, force)
             }
             sendJson(exchange, 200, mapper.writeValueAsString(mapOf("status" to "ok", "jobId" to jobId)))
         }
@@ -260,12 +261,13 @@ private fun runScan(
     file: File,
     engineHome: EngineHome,
     mapper: ObjectMapper,
-    lastResult: AtomicReference<ScanResult?>
+    lastResult: AtomicReference<ScanResult?>,
+    force: Boolean
 ) {
     try {
         val config = engineHome.readConfig(mapper)
         val cacheKey = engineHome.cacheKeyFor(file, config)
-        val cached = engineHome.loadCache(cacheKey, mapper)
+        val cached = if (force) null else engineHome.loadCache(cacheKey, mapper)
         if (cached != null) {
             job.status = "completed"
             job.progress = 100
