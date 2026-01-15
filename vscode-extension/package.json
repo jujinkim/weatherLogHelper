@@ -66,7 +66,7 @@
       },
       {
         "command": "wlh.refreshView",
-        "title": "WLH: 패널 새로고침"
+        "title": "WLH: Panel Refresh"
       },
       {
         "command": "wlh.engineMenu",

@@ -841,6 +841,27 @@ async function runWlhCommand(args: string[], label: string) {
   }
 }
 
+async function runEngineStatus() {
+  sidebarProvider?.updateStatus('Status: checking...');
+  try {
+    const result = await runWlhJson<{ status?: string }>(['status', '--no-update']);
+    const statusValue = (result.status || '').toLowerCase();
+    if (statusValue === 'ok') {
+      sidebarProvider?.updateStatus('Status: running');
+      return;
+    }
+    if (statusValue === 'not_running') {
+      sidebarProvider?.updateStatus('Status: not running');
+      return;
+    }
+    sidebarProvider?.updateStatus(`Status: ${statusValue || 'unknown'}`);
+  } catch (err) {
+    sidebarProvider?.updateStatus('Status: error');
+    const message = (err as Error).message;
+    vscode.window.showErrorMessage(`WLH: Status failed: ${message}`);
+  }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const extension = vscode.extensions.getExtension('jujinkim.weather-log-helper');
   const version = extension?.packageJSON?.version || 'unknown';
@@ -855,7 +876,7 @@ export function activate(context: vscode.ExtensionContext) {
         { label: 'Open WLH Home', id: 'home' },
         { label: 'Open Settings', id: 'settings' },
         { label: 'Open Engine Config', id: 'engineConfig' },
-        { label: '패널 새로고침', id: 'refresh' }
+        { label: 'Panel Refresh', id: 'refresh' }
       ],
       { placeHolder: 'WLH Actions' }
     );
@@ -864,7 +885,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
     switch (pick.id) {
       case 'status':
-        await runWlhCommand(['status', '--no-update'], 'Status');
+        await runEngineStatus();
         break;
       case 'stop':
         await runWlhCommand(['stop'], 'Stop');
@@ -958,7 +979,7 @@ export function activate(context: vscode.ExtensionContext) {
     openEngineConfig();
   });
   const statusCommand = vscode.commands.registerCommand('wlh.status', async () => {
-    await runWlhCommand(['status', '--no-update'], 'Status');
+    await runEngineStatus();
   });
   const stopCommand = vscode.commands.registerCommand('wlh.stop', async () => {
     await runWlhCommand(['stop'], 'Stop');
