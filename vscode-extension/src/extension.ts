@@ -259,9 +259,17 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             ? [entry.packageName.toLowerCase()]
             : scanPackagesLower.filter((pkg) => previewLower.includes(pkg));
           const matchedAttr = matched.length > 0 ? matched.join(',') : '';
-          return `<li data-packages="${escape(matchedAttr)}"><button class="jump" data-line="${entry.line}">L${entry.line}</button> <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button> ${escape(
-            entry.preview
-          )}</li>`;
+          const lines = entry.preview.split(/\r?\n/).length || 1;
+          const safeLines = Math.min(Math.max(lines, 1), 12);
+          return `
+            <li data-packages="${escape(matchedAttr)}">
+              <div class="entry-header">
+                <button class="jump" data-line="${entry.line}">L${entry.line}</button>
+                <button class="copy" data-copy="${entry.line}" title="Copy line">📋</button>
+              </div>
+              <textarea class="entry-text" rows="${safeLines}" readonly>${escape(entry.preview)}</textarea>
+            </li>
+          `;
         })
         .join('');
       return items + `<li data-empty="1" style="display:none">${escape(emptyText)}</li>`;
@@ -355,6 +363,26 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               margin-bottom: 6px;
               font-size: 13px;
               white-space: pre-wrap;
+            }
+            .entry-header {
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              margin-bottom: 4px;
+            }
+            .entry-text {
+              width: 100%;
+              resize: none;
+              padding: 6px 8px;
+              border-radius: 6px;
+              border: 1px solid var(--vscode-panel-border);
+              background: var(--vscode-editorWidget-background);
+              color: var(--vscode-foreground);
+              font-family: var(--vscode-editor-font-family, monospace);
+              font-size: 12px;
+              line-height: 1.4;
+              overflow-x: auto;
+              white-space: pre;
             }
             .jump {
               background: transparent;
