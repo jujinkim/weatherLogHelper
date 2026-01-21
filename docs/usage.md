@@ -23,6 +23,9 @@ Place `wlh.config.json` next to the log file (see `ue18-scripts/config.template.
 
 ## Scan Rules (current)
 
+- Build properties:
+  - Matches lines of form `[ro.build.XXX]: [value]` (and related keys).
+  - Extracts key/value pairs and stores them in `buildProps`.
 - Versions:
   - `Package [<name>] (<id>):` → scan up to 30 lines for `codePath`, `versionCode`, `versionName`.
   - `mPackageName='<name>'` → scan next 3 lines for `VersionName:` and `VersionCode:`.

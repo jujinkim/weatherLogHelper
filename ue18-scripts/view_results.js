@@ -24,6 +24,18 @@ if (!fso.FileExists(resultPath)) {
   lines.push("Source: " + filePath);
   lines.push("Generated: " + (result.generatedAt || ""));
   lines.push("");
+  lines.push("Build Properties:");
+  if (result.buildProps && result.buildProps.length > 0) {
+    for (var b = 0; b < result.buildProps.length; b++) {
+      var prop = result.buildProps[b];
+      if (prop && prop.key) {
+        lines.push("  " + prop.key + ": " + (prop.value || ""));
+      }
+    }
+  } else {
+    lines.push("  (none)");
+  }
+  lines.push("");
   lines.push("Versions:");
   if (result.versions && result.versions.length > 0) {
     for (var i = 0; i < result.versions.length; i++) {

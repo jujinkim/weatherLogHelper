@@ -100,6 +100,7 @@ Schema (high level):
 ```json
 {
   "file": "/abs/path/to/log.txt",
+  "buildProps": [{ "key": "ro.build.version.release", "value": "14" }],
   "versions": [{ "line": 120, "label": "1.0.0 (12345)", "packageName": "com.example.app" }],
   "crashes": [{ "line": 123, "preview": "...", "packageName": "com.example.app" }],
   "generatedAt": "2024-01-01T00:00:00Z"
