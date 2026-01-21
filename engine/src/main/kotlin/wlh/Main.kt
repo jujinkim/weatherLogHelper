@@ -328,15 +328,13 @@ private fun scanBuildProps(file: File): List<BuildPropEntry> {
     file.bufferedReader().use { reader ->
         var line = reader.readLine()
         while (line != null) {
-            if (line.contains("[ro.build.")) {
-                val match = lineRegex.find(line)
-                if (match != null) {
-                    val key = match.groupValues[1].trim()
-                    if (keySet.contains(key) && !found.containsKey(key)) {
-                        found[key] = match.groupValues[2].trim()
-                        if (found.size == keySet.size) {
-                            break
-                        }
+            val match = lineRegex.find(line)
+            if (match != null) {
+                val key = match.groupValues[1].trim()
+                if (keySet.contains(key) && !found.containsKey(key)) {
+                    found[key] = match.groupValues[2].trim()
+                    if (found.size == keySet.size) {
+                        break
                     }
                 }
             }
