@@ -47,7 +47,8 @@ data class JobStatus(
 )
 
 data class EngineConfig(
-    val scanPackages: List<String>
+    val scanPackages: List<String>,
+    val buildProps: List<String>
 )
 
 private data class Job(
@@ -291,7 +292,7 @@ private fun runScan(
 }
 
 private fun scanFull(file: File, job: Job, config: EngineConfig): ScanResult {
-    val buildProps = scanBuildProps(file)
+    val buildProps = scanBuildProps(file, config)
     val versions = scanPackageVersions(file, config)
     val crashes = scanFatalCrashes(file, job, config, 95)
 
@@ -304,23 +305,9 @@ private fun scanFull(file: File, job: Job, config: EngineConfig): ScanResult {
     )
 }
 
-private fun scanBuildProps(file: File): List<BuildPropEntry> {
-    val keys = listOf(
-        "ro.build.changelist",
-        "ro.build.flavor",
-        "ro.build.version.oneui",
-        "ro.build.version.release",
-        "ro.build.version.sdk",
-        "ro.build.version.sem",
-        "ro.build.version.sep",
-        "ro.csc.country_code",
-        "ro.csc.countryiso_code",
-        "ro.csc.sales_code",
-        "ro.omc.build.id",
-        "ro.omc.build.version",
-        "ro.product.build.type",
-        "ro.product.model"
-    )
+private fun scanBuildProps(file: File, config: EngineConfig): List<BuildPropEntry> {
+    val keys = config.buildProps
+    if (keys.isEmpty()) return emptyList()
     val keySet = keys.toSet()
     val found = LinkedHashMap<String, String>()
     val lineRegex = Regex("\\[([^\\]]+)]\\s*:\\s*\\[([^\\]]*)]")
@@ -1031,6 +1018,22 @@ private class EngineHome(private val home: Path) {
     private val cacheDir = home.resolve("cache")
     private val configDir = home.resolve("config")
     private val configFile = configDir.resolve("wlh.json")
+    private val defaultBuildProps = listOf(
+        "ro.build.changelist",
+        "ro.build.flavor",
+        "ro.build.version.oneui",
+        "ro.build.version.release",
+        "ro.build.version.sdk",
+        "ro.build.version.sem",
+        "ro.build.version.sep",
+        "ro.csc.country_code",
+        "ro.csc.countryiso_code",
+        "ro.csc.sales_code",
+        "ro.omc.build.id",
+        "ro.omc.build.version",
+        "ro.product.build.type",
+        "ro.product.model"
+    )
 
     fun ensure() {
         Files.createDirectories(engineDir)
@@ -1062,7 +1065,8 @@ private class EngineHome(private val home: Path) {
 
     fun cacheKeyFor(file: File, config: EngineConfig): String {
         val configKey = config.scanPackages.joinToString(",")
-        val key = "${file.absolutePath}:${file.length()}:${file.lastModified()}:${configKey}"
+        val propKey = config.buildProps.joinToString(",")
+        val key = "${file.absolutePath}:${file.length()}:${file.lastModified()}:${configKey}:${propKey}"
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(key.toByteArray(StandardCharsets.UTF_8))
         return hash.joinToString("") { "%02x".format(it) }
@@ -1088,17 +1092,42 @@ private class EngineHome(private val home: Path) {
 
     fun readConfig(mapper: ObjectMapper): EngineConfig {
         if (!Files.exists(configFile)) {
-            return EngineConfig(emptyList())
+            writeDefaultConfig(mapper)
+            return EngineConfig(emptyList(), defaultBuildProps)
         }
         return try {
             val node = mapper.readTree(configFile.toFile())
             val packages = node.path("scanPackages").takeIf { it.isArray }?.map { it.asText() } ?: emptyList()
+            val buildProps = node.path("buildProps").takeIf { it.isArray }?.map { it.asText() }
+            if (buildProps == null) {
+                writeDefaultConfig(mapper, node)
+            }
             EngineConfig(
-                packages.filter { it.isNotBlank() }
+                packages.filter { it.isNotBlank() },
+                (buildProps ?: defaultBuildProps).filter { it.isNotBlank() }
             )
         } catch (ex: Exception) {
-            EngineConfig(emptyList())
+            writeDefaultConfig(mapper)
+            EngineConfig(emptyList(), defaultBuildProps)
         }
+    }
+
+    private fun writeDefaultConfig(mapper: ObjectMapper, existing: JsonNode? = null) {
+        val node = if (existing is com.fasterxml.jackson.databind.node.ObjectNode) {
+            existing.deepCopy<com.fasterxml.jackson.databind.node.ObjectNode>()
+        } else {
+            mapper.createObjectNode()
+        }
+        if (!node.has("scanPackages")) {
+            node.putArray("scanPackages")
+        }
+        if (!node.has("buildProps")) {
+            val arr = node.putArray("buildProps")
+            defaultBuildProps.forEach { arr.add(it) }
+        }
+        val temp = configDir.resolve("wlh.json.tmp")
+        Files.writeString(temp, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(node), StandardCharsets.UTF_8)
+        Files.move(temp, configFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
 }
 
