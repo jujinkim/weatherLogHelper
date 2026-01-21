@@ -29,8 +29,11 @@ data class CrashEntry(val line: Long, val preview: String, val packageName: Stri
 
 data class VersionEntry(val line: Long, val label: String, val packageName: String)
 
+data class BuildPropEntry(val key: String, val value: String)
+
 data class ScanResult(
     val file: String,
+    val buildProps: List<BuildPropEntry>,
     val versions: List<VersionEntry>,
     val crashes: List<CrashEntry>,
     val generatedAt: String
@@ -288,15 +291,63 @@ private fun runScan(
 }
 
 private fun scanFull(file: File, job: Job, config: EngineConfig): ScanResult {
+    val buildProps = scanBuildProps(file)
     val versions = scanPackageVersions(file, config)
     val crashes = scanFatalCrashes(file, job, config, 95)
 
     return ScanResult(
         file = file.absolutePath,
+        buildProps = buildProps,
         versions = versions,
         crashes = crashes,
         generatedAt = Instant.now().toString()
     )
+}
+
+private fun scanBuildProps(file: File): List<BuildPropEntry> {
+    val keys = listOf(
+        "ro.build.changelist",
+        "ro.build.flavor",
+        "ro.build.version.oneui",
+        "ro.build.version.release",
+        "ro.build.version.sdk",
+        "ro.build.version.sem",
+        "ro.build.version.sep",
+        "ro.csc.country_code",
+        "ro.csc.countryiso_code",
+        "ro.csc.sales_code",
+        "ro.omc.build.id",
+        "ro.omc.build.version",
+        "ro.product.build.type",
+        "ro.product.model"
+    )
+    val keySet = keys.toSet()
+    val found = LinkedHashMap<String, String>()
+    val lineRegex = Regex("\\[([^\\]]+)]\\s*:\\s*\\[([^\\]]*)]")
+
+    file.bufferedReader().use { reader ->
+        var line = reader.readLine()
+        while (line != null) {
+            if (line.contains("[ro.build.")) {
+                val match = lineRegex.find(line)
+                if (match != null) {
+                    val key = match.groupValues[1].trim()
+                    if (keySet.contains(key) && !found.containsKey(key)) {
+                        found[key] = match.groupValues[2].trim()
+                        if (found.size == keySet.size) {
+                            break
+                        }
+                    }
+                }
+            }
+            line = reader.readLine()
+        }
+    }
+
+    return keys.mapNotNull { key ->
+        val value = found[key] ?: return@mapNotNull null
+        BuildPropEntry(key, value)
+    }
 }
 
 private fun scanFatalCrashes(

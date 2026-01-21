@@ -18,8 +18,14 @@ type VersionEntry = {
   packageName?: string;
 };
 
+type BuildPropEntry = {
+  key: string;
+  value: string;
+};
+
 type ScanResults = {
   filePath: string;
+  buildProps: BuildPropEntry[];
   versions: Array<VersionEntry | string>;
   crashes: CrashEntry[];
 };
@@ -51,6 +57,23 @@ function normalizeResults(raw: Partial<ScanResults> & { file?: string }): ScanRe
     };
   return {
     filePath: raw.filePath || raw.file || 'Unknown file',
+    buildProps: (() => {
+      const rawBuildProps = (raw as { buildProps?: unknown }).buildProps;
+      if (!Array.isArray(rawBuildProps)) {
+        return [];
+      }
+      return rawBuildProps
+        .map((entry: unknown) => {
+          if (entry && typeof entry === 'object') {
+            const maybe = entry as { key?: unknown; value?: unknown };
+            const key = typeof maybe.key === 'string' ? maybe.key : '';
+            const value = typeof maybe.value === 'string' ? maybe.value : '';
+            return { key, value };
+          }
+          return { key: '', value: '' };
+        })
+        .filter((item: { key: string }) => item.key.length > 0);
+    })(),
     versions: normalizeVersions(raw.versions),
     crashes: Array.isArray(raw.crashes)
       ? raw.crashes
@@ -184,6 +207,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
 
     const emptyResults: ScanResults = {
       filePath: this.lastFilePath,
+      buildProps: [],
       versions: [],
       crashes: []
     };
@@ -200,7 +224,12 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
     scanPackages: string[] = []
   ): string {
     const escape = (value: string | undefined | null) =>
-      (value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      (value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     const versions = results.versions.length
       ? results.versions
           .map((v) => {
@@ -216,6 +245,24 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
           })
           .join('')
       : '<li data-empty="1">No version log</li>';
+
+    const buildProps = results.buildProps.length
+      ? results.buildProps
+          .map((entry) => {
+            const key = escape(entry.key);
+            const value = escape(entry.value);
+            return (
+              `<tr>` +
+              `<td class="prop-key">${key}</td>` +
+              `<td class="prop-value">` +
+              `<button class="copy" data-copy="${value}" title="Copy value">📋</button>` +
+              `<span>${value}</span>` +
+              `</td>` +
+              `</tr>`
+            );
+          })
+          .join('')
+      : '<tr><td colspan="2" class="prop-empty">No build properties found.</td></tr>';
     const scanPackagesLower = scanPackages.map((pkg) => pkg.toLowerCase());
     const renderEntries = (entries: CrashEntry[], emptyText: string) => {
       if (entries.length === 0) {
@@ -374,6 +421,41 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               font-size: 12px;
               line-height: 1.4;
             }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 6px;
+              font-size: 12px;
+            }
+            th, td {
+              border: 1px solid var(--vscode-panel-border);
+              padding: 6px 8px;
+              text-align: left;
+              vertical-align: top;
+            }
+            th {
+              background: var(--vscode-editorWidget-background);
+              color: var(--vscode-descriptionForeground);
+              text-transform: uppercase;
+              letter-spacing: 0.06em;
+              font-size: 11px;
+            }
+            .prop-key {
+              width: 45%;
+              font-family: var(--vscode-editor-font-family, monospace);
+              color: var(--vscode-foreground);
+              word-break: break-word;
+            }
+            .prop-value {
+              display: flex;
+              gap: 6px;
+              align-items: center;
+              font-family: var(--vscode-editor-font-family, monospace);
+              word-break: break-word;
+            }
+            .prop-empty {
+              color: var(--vscode-descriptionForeground);
+            }
             .message {
               font-size: 13px;
               color: var(--vscode-descriptionForeground);
@@ -404,6 +486,17 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             </div>
             <div class="status">Status: ${escape(this.lastStatus)}</div>
             ${messageSection}
+            <div class="section">
+              <h4>Build Properties</h4>
+              <table>
+                <thead>
+                  <tr><th>Key</th><th>Value</th></tr>
+                </thead>
+                <tbody>
+                  ${buildProps}
+                </tbody>
+              </table>
+            </div>
             <div class="section">
               <h4>Package Filter</h4>
               ${scanPackages.length === 0 ? '<div class="message">No packages configured.</div>' : `
