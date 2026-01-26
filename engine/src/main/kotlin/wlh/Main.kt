@@ -350,9 +350,10 @@ private fun scanFatalCrashes(
     val crashLines = mutableSetOf<Long>()
     val crashMarker = "FATAL EXCEPTION:"
     val appCrashedMarker = "APP CRASHED"
+    val amCrashMarker = "am_crash"
     val anrRegex = Regex("ANR in\\s+([0-9A-Za-z._-]+)")
 
-    val rgResult = runRgFatalScan(file, packageFilters, crashMarker, appCrashedMarker, anrRegex)
+    val rgResult = runRgFatalScan(file, packageFilters, crashMarker, appCrashedMarker, amCrashMarker, anrRegex)
     if (rgResult != null) {
         crashes.addAll(rgResult)
         job.progress = progressCap
@@ -455,23 +456,33 @@ private fun scanFatalCrashes(
                     }
                 }
             } else {
-                val anrMatch = anrRegex.find(line)
-                if (anrMatch != null) {
-                    val packageName = anrMatch.groupValues[1].lowercase(Locale.ROOT)
-                    if (packageFilters.contains(packageName)) {
-                        val anrLineNumber = lineNumber
-                        val blockLines = mutableListOf(line)
-                        var added = 0
-                        while (added < 3) {
-                            val next = reader.readLine() ?: break
-                            lineNumber += 1
-                            processedBytes += next.length + 1
-                            blockLines.add(next)
-                            added += 1
+                if (line.contains(amCrashMarker, ignoreCase = true)) {
+                    val matchedPackage = findMatchingPackage(line, packageFilters)
+                    if (matchedPackage != null) {
+                        val crashLineNumber = lineNumber
+                        if (crashLines.add(crashLineNumber)) {
+                            crashes.add(CrashEntry(crashLineNumber, line, matchedPackage))
                         }
-                        if (crashLines.add(anrLineNumber)) {
-                            val formatted = formatCrashLines(blockLines)
-                            crashes.add(CrashEntry(anrLineNumber, formatted.joinToString("\n"), packageName))
+                    }
+                } else {
+                    val anrMatch = anrRegex.find(line)
+                    if (anrMatch != null) {
+                        val packageName = anrMatch.groupValues[1].lowercase(Locale.ROOT)
+                        if (packageFilters.contains(packageName)) {
+                            val anrLineNumber = lineNumber
+                            val blockLines = mutableListOf(line)
+                            var added = 0
+                            while (added < 3) {
+                                val next = reader.readLine() ?: break
+                                lineNumber += 1
+                                processedBytes += next.length + 1
+                                blockLines.add(next)
+                                added += 1
+                            }
+                            if (crashLines.add(anrLineNumber)) {
+                                val formatted = formatCrashLines(blockLines)
+                                crashes.add(CrashEntry(anrLineNumber, formatted.joinToString("\n"), packageName))
+                            }
                         }
                     }
                 }
@@ -491,9 +502,10 @@ private fun runRgFatalScan(
     packageFilters: List<String>,
     crashMarker: String,
     appCrashedMarker: String,
+    amCrashMarker: String,
     anrRegex: Regex
 ): List<CrashEntry>? {
-    val args = mutableListOf("rg", "--text", "-n", "-A", "6", crashMarker, "-e", appCrashedMarker, "-e", "ANR in ")
+    val args = mutableListOf("rg", "--text", "-n", "-A", "6", crashMarker, "-e", appCrashedMarker, "-e", amCrashMarker, "-e", "ANR in ")
     args.add(file.absolutePath)
 
     val process = try {
@@ -513,7 +525,7 @@ private fun runRgFatalScan(
     process.inputStream.bufferedReader().useLines { lines ->
         lines.forEach { raw ->
             if (raw == "--") {
-                processFatalBlock(blockLines, packageFilters, crashMarker, appCrashedMarker, anrRegex, crashes, crashLines)
+                processFatalBlock(blockLines, packageFilters, crashMarker, appCrashedMarker, amCrashMarker, anrRegex, crashes, crashLines)
                 blockLines.clear()
                 return@forEach
             }
@@ -524,7 +536,7 @@ private fun runRgFatalScan(
         }
     }
     if (blockLines.isNotEmpty()) {
-        processFatalBlock(blockLines, packageFilters, crashMarker, appCrashedMarker, anrRegex, crashes, crashLines)
+        processFatalBlock(blockLines, packageFilters, crashMarker, appCrashedMarker, amCrashMarker, anrRegex, crashes, crashLines)
     }
 
     return if (process.waitFor() == 0) crashes else null
@@ -535,6 +547,7 @@ private fun processFatalBlock(
     packageFilters: List<String>,
     crashMarker: String,
     appCrashedMarker: String,
+    amCrashMarker: String,
     anrRegex: Regex,
     crashes: MutableList<CrashEntry>,
     crashLines: MutableSet<Long>
@@ -567,38 +580,43 @@ private fun processFatalBlock(
     }
 
     val crashIndex = blockLines.indexOfFirst { it.second.contains(appCrashedMarker) }
-    if (crashIndex == -1 || crashIndex + 1 >= blockLines.size) {
-        return
-    }
-    val (crashLineNumber, crashLine) = blockLines[crashIndex]
-    val nextLine = blockLines[crashIndex + 1].second
-    val tagIndex = nextLine.indexOf("CRASH:", ignoreCase = true)
-    if (tagIndex == -1) {
-        return
-    }
-    val packageName = nextLine.substring(tagIndex + "CRASH:".length).trim()
-        .split(Regex("\\s+"))
-        .firstOrNull()
-        ?.lowercase(Locale.ROOT)
-        ?: return
-    if (!packageFilters.contains(packageName)) {
-        return
-    }
-    val block = mutableListOf(crashLine, nextLine)
-    var added = 0
-    for (i in crashIndex + 2 until blockLines.size) {
-        if (added >= 3) break
-        val line = blockLines[i].second
-        if (line.contains("CRASH", ignoreCase = true)) {
-            block.add(line)
-            added += 1
-        } else {
-            break
+    if (crashIndex != -1 && crashIndex + 1 < blockLines.size) {
+        val (crashLineNumber, crashLine) = blockLines[crashIndex]
+        val nextLine = blockLines[crashIndex + 1].second
+        val tagIndex = nextLine.indexOf("CRASH:", ignoreCase = true)
+        if (tagIndex != -1) {
+            val packageName = nextLine.substring(tagIndex + "CRASH:".length).trim()
+                .split(Regex("\\s+"))
+                .firstOrNull()
+                ?.lowercase(Locale.ROOT)
+            if (packageName != null && packageFilters.contains(packageName)) {
+                val block = mutableListOf(crashLine, nextLine)
+                var added = 0
+                for (i in crashIndex + 2 until blockLines.size) {
+                    if (added >= 3) break
+                    val line = blockLines[i].second
+                    if (line.contains("CRASH", ignoreCase = true)) {
+                        block.add(line)
+                        added += 1
+                    } else {
+                        break
+                    }
+                }
+                if (crashLines.add(crashLineNumber)) {
+                    val formatted = formatCrashLines(block)
+                    crashes.add(CrashEntry(crashLineNumber, formatted.joinToString("\n"), packageName))
+                }
+            }
         }
     }
-    if (crashLines.add(crashLineNumber)) {
-        val formatted = formatCrashLines(block)
-        crashes.add(CrashEntry(crashLineNumber, formatted.joinToString("\n"), packageName))
+
+    val amCrashIndex = blockLines.indexOfFirst { it.second.contains(amCrashMarker, ignoreCase = true) }
+    if (amCrashIndex != -1) {
+        val (amCrashLineNumber, amCrashLine) = blockLines[amCrashIndex]
+        val matchedPackage = findMatchingPackage(amCrashLine, packageFilters)
+        if (matchedPackage != null && crashLines.add(amCrashLineNumber)) {
+            crashes.add(CrashEntry(amCrashLineNumber, amCrashLine, matchedPackage))
+        }
     }
 
     val anrIndex = blockLines.indexOfFirst { anrRegex.containsMatchIn(it.second) }
