@@ -351,9 +351,10 @@ private fun scanFatalCrashes(
     val crashMarker = "FATAL EXCEPTION:"
     val appCrashedMarker = "APP CRASHED"
     val amCrashMarker = "am_crash"
-    val anrRegex = Regex("ANR in\\s+([0-9A-Za-z._-]+)")
+    val anrRegex = Regex("ANR in\\s+([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
+    val anrColonRegex = Regex("ANR\\s*:\\s*([0-9A-Za-z._-]+)", RegexOption.IGNORE_CASE)
 
-    val rgResult = runRgFatalScan(file, packageFilters, crashMarker, appCrashedMarker, amCrashMarker, anrRegex)
+    val rgResult = runRgFatalScan(file, packageFilters, crashMarker, appCrashedMarker, amCrashMarker, anrRegex, anrColonRegex)
     if (rgResult != null) {
         crashes.addAll(rgResult)
         job.progress = progressCap
@@ -465,7 +466,7 @@ private fun scanFatalCrashes(
                         }
                     }
                 } else {
-                    val anrMatch = anrRegex.find(line)
+                    val anrMatch = anrRegex.find(line) ?: anrColonRegex.find(line)
                     if (anrMatch != null) {
                         val packageName = anrMatch.groupValues[1].lowercase(Locale.ROOT)
                         if (packageFilters.contains(packageName)) {
@@ -503,9 +504,25 @@ private fun runRgFatalScan(
     crashMarker: String,
     appCrashedMarker: String,
     amCrashMarker: String,
-    anrRegex: Regex
+    anrRegex: Regex,
+    anrColonRegex: Regex
 ): List<CrashEntry>? {
-    val args = mutableListOf("rg", "--text", "-n", "-A", "6", crashMarker, "-e", appCrashedMarker, "-e", amCrashMarker, "-e", "ANR in ")
+    val args = mutableListOf(
+        "rg",
+        "--text",
+        "-n",
+        "-A",
+        "6",
+        crashMarker,
+        "-e",
+        appCrashedMarker,
+        "-e",
+        amCrashMarker,
+        "-e",
+        "ANR in ",
+        "-e",
+        "ANR :"
+    )
     args.add(file.absolutePath)
 
     val process = try {
@@ -525,7 +542,7 @@ private fun runRgFatalScan(
     process.inputStream.bufferedReader().useLines { lines ->
         lines.forEach { raw ->
             if (raw == "--") {
-                processFatalBlock(blockLines, packageFilters, crashMarker, appCrashedMarker, amCrashMarker, anrRegex, crashes, crashLines)
+                processFatalBlock(blockLines, packageFilters, crashMarker, appCrashedMarker, amCrashMarker, anrRegex, anrColonRegex, crashes, crashLines)
                 blockLines.clear()
                 return@forEach
             }
@@ -536,7 +553,7 @@ private fun runRgFatalScan(
         }
     }
     if (blockLines.isNotEmpty()) {
-        processFatalBlock(blockLines, packageFilters, crashMarker, appCrashedMarker, amCrashMarker, anrRegex, crashes, crashLines)
+        processFatalBlock(blockLines, packageFilters, crashMarker, appCrashedMarker, amCrashMarker, anrRegex, anrColonRegex, crashes, crashLines)
     }
 
     return if (process.waitFor() == 0) crashes else null
@@ -549,6 +566,7 @@ private fun processFatalBlock(
     appCrashedMarker: String,
     amCrashMarker: String,
     anrRegex: Regex,
+    anrColonRegex: Regex,
     crashes: MutableList<CrashEntry>,
     crashLines: MutableSet<Long>
 ) {
@@ -619,12 +637,12 @@ private fun processFatalBlock(
         }
     }
 
-    val anrIndex = blockLines.indexOfFirst { anrRegex.containsMatchIn(it.second) }
+    val anrIndex = blockLines.indexOfFirst { anrRegex.containsMatchIn(it.second) || anrColonRegex.containsMatchIn(it.second) }
     if (anrIndex == -1) {
         return
     }
     val (anrLineNumber, anrLine) = blockLines[anrIndex]
-    val match = anrRegex.find(anrLine) ?: return
+    val match = anrRegex.find(anrLine) ?: anrColonRegex.find(anrLine) ?: return
     val anrPackage = match.groupValues[1].lowercase(Locale.ROOT)
     if (!packageFilters.contains(anrPackage)) {
         return
