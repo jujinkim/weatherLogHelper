@@ -461,6 +461,11 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
               color: var(--vscode-descriptionForeground);
               white-space: pre-wrap;
             }
+            .footnote {
+              margin-top: 12px;
+              font-size: 11px;
+              color: var(--vscode-descriptionForeground);
+            }
             select {
               background: var(--vscode-dropdown-background);
               color: var(--vscode-dropdown-foreground);
@@ -511,6 +516,7 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
             <ul id="crashList">${renderEntries(crashEntries, 'No crash log')}</ul>
             <h4>ANR</h4>
             <ul id="anrList">${renderEntries(anrEntries, 'No ANR log')}</ul>
+            <div class="footnote">This panel shows matches based on predefined patterns; results may be incomplete.</div>
           </div>
           <script>
             const vscode = acquireVsCodeApi();
