@@ -292,8 +292,9 @@ class WlhSidebarProvider implements vscode.WebviewViewProvider {
       return items + `<li data-empty="1" style="display:none">${escape(emptyText)}</li>`;
     };
 
-    const anrEntries = results.crashes.filter((entry) => entry.preview.includes('ANR in'));
-    const crashEntries = results.crashes.filter((entry) => !entry.preview.includes('ANR in'));
+    const anrPattern = /ANR\s*(in|:)/i;
+    const anrEntries = results.crashes.filter((entry) => anrPattern.test(entry.preview));
+    const crashEntries = results.crashes.filter((entry) => !anrPattern.test(entry.preview));
 
     const packageOptions = scanPackages.map(
       (pkg) => `<option value="${escape(pkg.toLowerCase())}">${escape(pkg)}</option>`
